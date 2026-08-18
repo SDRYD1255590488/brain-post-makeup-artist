@@ -20,7 +20,7 @@ Run only after explicit user confirmation:
 5. Update the same post exactly once with an additional verified callout; verify again.
 6. Attempting the same create command again must be blocked by the local success marker.
 
-Execute these steps through the single `acceptance` CLI command so they share one browser process and one authenticated context. Use `--browser-channel auto`: select version-matched bundled Chromium when its executable exists, otherwise select system Chrome before launch. Do not probe by launching one browser and then retrying with another. Do not assemble the live acceptance from separate browser-launching commands.
+Execute these steps through the single `acceptance` CLI command so they share one browser process and one authenticated context. Use the default `--browser-channel chromium` after installing the version-matched browser with `uv run playwright install chromium`. Use `auto` only when a user explicitly permits a system Chrome fallback. Do not probe by launching one browser and then retrying with another. Do not assemble the live acceptance from separate browser-launching commands.
 
 A pre-navigation `SIGABRT` inside a restricted sandbox is an execution-permission failure. Obtain browser execution permission and make one new pre-dispatch launch. A missing bundled executable is a dependency/configuration failure; either install the matching Playwright browser or explicitly use an installed system Chrome.
 

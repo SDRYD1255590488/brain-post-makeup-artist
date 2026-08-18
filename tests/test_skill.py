@@ -117,6 +117,11 @@ class SkillTests(unittest.TestCase):
         settings = Settings.from_env(env)
         self.assertEqual(settings.email, "user@example.com")
         self.assertEqual(settings.password, "secret")
+        self.assertEqual(settings.chrome_channel, "chromium")
+
+    def test_default_browser_channel_is_version_matched_chromium(self) -> None:
+        settings = Settings.from_env(self.work / "missing.env", require_credentials=False)
+        self.assertEqual(settings.chrome_channel, "chromium")
 
     def test_secure_config_import_writes_mode_0600(self) -> None:
         config = self.work / "config.json"

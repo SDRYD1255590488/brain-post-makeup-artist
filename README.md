@@ -4,15 +4,17 @@
 
 ## 中文介绍
 
-`brain-post-makeup-artist` 是一个用于 WorldQuant BRAIN / Zendesk Community 论坛的**帖子结构设计、确定性排版、审计、发布和回读** Codex Skill。
+`brain-post-makeup-artist` 是一个用于 WorldQuant BRAIN Support / Zendesk Community 论坛的**帖子结构设计、确定性排版、审计、发布和回读**通用 Agent Skill。
 
-它有两层：Codex 根据用户的发帖目标和素材组织草稿；本仓库的脚本把一个本地 UTF-8 `text`、Markdown 或 HTML 文件稳定转换为论坛兼容 HTML，并负责审计、预览、图片注册、发布与回读。所有组件都基于论坛实际回读结果，而不是仅凭浏览器预览推测。
+它有两层：任意兼容 Agent 根据用户的发帖目标和素材组织草稿；本仓库的脚本把一个本地 UTF-8 `text`、Markdown 或 HTML 文件稳定转换为论坛兼容 HTML，并负责审计、预览、图片注册、发布与回读。所有组件都基于论坛实际回读结果，而不是仅凭浏览器预览推测。
 
-这意味着“我想发一篇解释 XXX 的帖子，材料如下”是有效的 **Skill 输入**，但不是 CLI 的直接输入：Codex 先把意图和素材写成草稿文件，再调用 `compose`。CLI 不调用大模型，也不会自行补造事实、数据或章节。
+这意味着“我想发一篇解释 XXX 的帖子，材料如下”是有效的 **Skill 输入**，但不是 CLI 的直接输入：Agent 先把意图和素材写成草稿文件，再调用 `compose`。CLI 不调用大模型，也不会自行补造事实、数据或章节。
+
+兼容 Agent 的最低能力是：能读取 `SKILL.md`、读写本地文件、运行 Python/UV 命令，并在真实发布前向用户取得确认。仓库不依赖某个 Agent 品牌；各产品的“Skill 安装/发现”方式不同，但都可把本目录作为工作指令与脚本包使用。
 
 ### 主要能力
 
-- 在 Codex 层，根据发帖目标、受众与素材设计标题、摘要、章节和阅读路径
+- 在 Agent 层，根据发帖目标、受众与素材设计标题、摘要、章节和阅读路径
 - CLI 自动识别或显式接收 `text`、Markdown、HTML；Markdown 支持表格、删除线和代码块
 - 移除/降级正文 `h1`、去掉 `class`，以平台标题为唯一标题；有两个及以上 `h2` 时生成目录、命名锚点和“返回顶部”链接
 - 为首段、标题、引用、表格、代码和分隔线施加三套固定主题之一：`emerald`、`indigo`、`coral`
@@ -44,7 +46,7 @@ BRAIN API 登录
 
 ### 快速开始
 
-在 Codex 中可以直接这样说：
+在任意兼容 Agent 中可以直接这样说：
 
 ```text
 我要在 BRAIN 论坛发一篇给新手看的帖子：解释 XXX。
@@ -65,12 +67,23 @@ Skill 先确认受众、目标、标题、发布版块与改写深度，并把�
 
 `--mode preserve|polish|develop` 会写入 `post-spec.json` 记录上层编辑意图；文字的保留、润色或扩写由 Codex 在生成输入草稿时完成，`compose` 不根据该参数改写文字。
 
-命令行使用前先配置环境：
+命令行使用前，必须安装与锁定 Python Playwright 版本匹配的 Chromium：
 
 ```bash
 uv sync
+uv run playwright install chromium
+```
+
+若本机已有 `brain-mcp-v2` 的受限配置，可安全导入凭据：
+
+```bash
 uv run python scripts/configure_env.py
-uv run python scripts/forum_skill.py doctor --auth
+```
+
+否则按 `.env.example` 创建本地 `.env` 并填写自己的 BRAIN 凭据。然后验证认证与浏览器：
+
+```bash
+uv run python scripts/forum_skill.py doctor --auth --browser
 ```
 
 准备好草稿后：
@@ -120,25 +133,27 @@ python -m pip install -r requirements.txt
 
 `requirements.txt` 会引用精确版本的 `requirements.lock.txt`。两者由 `uv.lock` 导出；`uv.lock` 仍是唯一带工件哈希的权威锁文件，因此维护者更新依赖时应先执行 `uv lock`。
 
-Playwright Python 包和浏览器二进制是两件事。若希望使用匹配版本的 bundled Chromium，可执行：
+Playwright Python 包和浏览器二进制是两件事；**bundled Chromium 是默认且必需的发布前置条件**：
 
 ```bash
 uv run playwright install chromium
 ```
 
-如果该浏览器二进制尚未安装，默认 `BRAIN_FORUM_CHROME_CHANNEL=auto` 会在启动前选择已安装的系统 Chrome；不会先启动失败再自动重试。
+默认 `BRAIN_FORUM_CHROME_CHANNEL=chromium`，以保证浏览器版本与锁定的 Python 包匹配。仅当用户明确选择兼容模式时，才设置为 `auto`，让其在 bundled Chromium 缺失时使用系统 Chrome；这不是默认路径，也不会在启动失败后自动重试。
 
 ## English
 
-`brain-post-makeup-artist` is a Codex Skill for **post structuring, deterministic formatting, auditing, publishing, and readback** on WorldQuant BRAIN / Zendesk Community forums.
+`brain-post-makeup-artist` is an agent-agnostic Skill for **post structuring, deterministic formatting, auditing, publishing, and readback** on WorldQuant BRAIN Support / Zendesk Community forums.
 
-It has two layers: Codex turns a user's posting goal and source materials into a draft; the scripts in this repository deterministically turn one local UTF-8 `text`, Markdown, or HTML file into forum-compatible HTML, then audit, preview, register images, publish, and read it back. Components are based on saved platform readbacks, not on browser previews alone.
+It has two layers: a compatible agent turns a user's posting goal and source materials into a draft; the scripts in this repository deterministically turn one local UTF-8 `text`, Markdown, or HTML file into forum-compatible HTML, then audit, preview, register images, publish, and read it back. Components are based on saved platform readbacks, not on browser previews alone.
 
-In other words, “I want to post a guide about XXX; here are my materials” is a valid **Skill input**, but not a direct CLI input. Codex writes the draft first and then runs `compose`. The CLI does not call an LLM and does not invent facts, figures, or sections.
+In other words, “I want to post a guide about XXX; here are my materials” is a valid **Skill input**, but not a direct CLI input. The agent writes the draft first and then runs `compose`. The CLI does not call an LLM and does not invent facts, figures, or sections.
+
+A compatible agent must be able to read `SKILL.md`, read and write local files, run Python/UV commands, and obtain user confirmation before a live post. The repository does not depend on an agent brand. Skill discovery and installation are product-specific, but any such agent can use this directory as the instruction and script bundle.
 
 ### Features
 
-- At the Codex layer, plan title, summary, sections, and reading flow from a goal, audience, and materials
+- At the agent layer, plan title, summary, sections, and reading flow from a goal, audience, and materials
 - Accept or auto-detect `text`, Markdown, and HTML; Markdown supports tables, strikethrough, and fenced code blocks
 - Remove/demote body `h1`, remove `class`, and generate a table of contents, named anchors, and back-to-top links when there are at least two `h2` headings
 - Apply one of three fixed themes—`emerald`, `indigo`, or `coral`—to the lead paragraph, headings, quotes, tables, code, and rules
@@ -170,7 +185,7 @@ The pure-HTTP Support SSO path is retained for diagnostics only. Ordinary HTTP c
 
 ### Quick start
 
-In Codex, a request can be as simple as:
+In any compatible agent, a request can be as simple as:
 
 ```text
 I want to post a beginner-friendly BRAIN forum guide about XXX.
@@ -191,12 +206,23 @@ The command-line inputs and responsibilities are:
 
 `--mode preserve|polish|develop` is recorded in `post-spec.json` as the intended upstream editing policy. Preservation, polishing, or development of prose is done by Codex when it creates the input draft; `compose` does not rewrite prose based on that flag.
 
-For command-line use, configure the environment first:
+For command-line use, first install the Chromium version matched to the locked Python Playwright package:
 
 ```bash
 uv sync
+uv run playwright install chromium
+```
+
+If the machine already has a restricted `brain-mcp-v2` configuration, import credentials safely:
+
+```bash
 uv run python scripts/configure_env.py
-uv run python scripts/forum_skill.py doctor --auth
+```
+
+Otherwise create a local `.env` from `.env.example` and fill in the user's own BRAIN credentials. Then verify both authentication and the browser:
+
+```bash
+uv run python scripts/forum_skill.py doctor --auth --browser
 ```
 
 Compose, audit, and preview a draft with the commands shown in the Chinese section above. Run `publish` or the single-session `acceptance` command only after explicit confirmation of the exact title, topic, and final body.
@@ -228,13 +254,13 @@ python -m pip install -r requirements.txt
 
 `requirements.txt` includes the exact-version `requirements.lock.txt`. Both are exported from `uv.lock`; `uv.lock` remains the only authoritative lockfile with artifact hashes, so maintainers should run `uv lock` first when changing dependencies.
 
-The Playwright Python package and its browser binary are separate dependencies. To install the version-matched bundled Chromium, run:
+The Playwright Python package and browser binary are separate dependencies. The bundled Chromium is a **required default prerequisite** for publishing:
 
 ```bash
 uv run playwright install chromium
 ```
 
-When the bundled browser is not installed, the default `BRAIN_FORUM_CHROME_CHANNEL=auto` selects an installed system Chrome before launch; it does not launch once, fail, and then retry automatically.
+The default `BRAIN_FORUM_CHROME_CHANNEL=chromium` keeps the browser revision matched to the locked Python package. Set it to `auto` only when a user explicitly chooses compatibility mode, allowing system Chrome when bundled Chromium is unavailable; it is not the default path and never retries after a failed launch.
 
 ## Repository layout
 

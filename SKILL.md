@@ -40,7 +40,7 @@ The script merges existing non-secret settings, writes `BRAIN_EMAIL/BRAIN_PASSWO
 
 If the default UV cache is not writable, set a task-scoped `UV_CACHE_DIR` outside the Skill. In a restricted environment, `preview --no-screenshots` is an acceptable drafting fallback, but formal visual acceptance still requires screenshots when browser execution becomes available.
 
-For live acceptance, use the single `acceptance` command instead of chaining `doctor`, `upload`, `publish`, `verify`, and `update`. It launches one browser process and keeps one authenticated browser context for the entire image/create/readback/update/readback sequence. With `--browser-channel auto`, it uses version-matched bundled Chromium when installed and otherwise selects system Chrome before launch. This preflight choice is not a retry.
+For live acceptance, use the single `acceptance` command instead of chaining `doctor`, `upload`, `publish`, `verify`, and `update`. It launches one browser process and keeps one authenticated browser context for the entire image/create/readback/update/readback sequence. The default `--browser-channel chromium` requires the version-matched bundled Chromium installed by `uv run playwright install chromium`. Use `auto` only when the user explicitly permits a system Chrome fallback; that preflight choice is not a retry.
 
 `pure-api-publish` is an experimental diagnostic path, not the default publisher. Current platform evidence shows that HTTP-only Support SSO may return 403 before topic lookup. Prefer the browser-authenticated API path even for text-only posts. If a user explicitly requests pure HTTP, stop on 401/403 and do not silently fall back or retry.
 
@@ -135,7 +135,7 @@ uv run python scripts/forum_skill.py acceptance \
   --confirm-title "[SKILL ACCEPTANCE] Exact title" \
   --topic-id 123 --topic-name "Exact AI_ONLY topic" \
   --manifest image-manifest.json --image-dir assets \
-  --output-dir .forum-runs/acceptance --browser-channel auto --execute
+  --output-dir .forum-runs/acceptance --browser-channel chromium --execute
 ```
 
 Do not run separate live commands in parallel with acceptance. A completed or unknown marker blocks reuse of the same output directory.

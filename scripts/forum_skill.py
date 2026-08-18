@@ -128,7 +128,7 @@ def parse_args() -> argparse.Namespace:
     command.add_argument("--output-dir", type=Path, required=True)
     command.add_argument("--mode", choices=["preserve", "polish", "develop"], default="polish")
     command.add_argument("--theme", choices=["emerald", "indigo", "coral"], default="emerald")
-    command.add_argument("--browser-channel", default="auto")
+    command.add_argument("--browser-channel", default="chromium")
     command.add_argument("--execute", action="store_true")
 
     command = sub.add_parser("pure-api-publish")

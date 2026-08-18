@@ -11,7 +11,7 @@
 
 The browser is the Support SSO session exchanger; create/update remain same-origin API calls. HTTP-only Support SSO is not the default because ordinary clients may receive Cloudflare/Zendesk 403 before forum topic lookup. Use one browser context per live workflow and close it after readback.
 
-Browser selection is a preflight decision. `auto` uses the Playwright bundled executable when it is actually installed and otherwise selects system Chrome. If a restricted sandbox aborts Chrome before navigation, obtain browser execution permission and restart only while no consequential request has been dispatched.
+Browser selection is a preflight decision. The default `chromium` requires the Playwright bundled executable installed by `uv run playwright install chromium`; this pins the browser revision to the Python package. `auto` is an explicit compatibility option: it uses the bundled executable when installed and otherwise selects system Chrome. If a restricted sandbox aborts Chrome before navigation, obtain browser execution permission and restart only while no consequential request has been dispatched.
 
 ## Images
 

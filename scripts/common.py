@@ -105,7 +105,7 @@ class Settings:
             support_url=values.get("BRAIN_SUPPORT_URL", "https://support.worldquantbrain.com").rstrip("/"),
             locale=values.get("BRAIN_FORUM_LOCALE", "en-us").strip("/"),
             artifact_dir=Path(values.get("BRAIN_FORUM_ARTIFACT_DIR", ".forum-runs")),
-            chrome_channel=values.get("BRAIN_FORUM_CHROME_CHANNEL", "auto"),
+            chrome_channel=values.get("BRAIN_FORUM_CHROME_CHANNEL", "chromium"),
         )
 
 
