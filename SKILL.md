@@ -1,6 +1,6 @@
 ---
 name: brain-post-makeup-artist
-description: Beautify, structure, preview, audit, publish, update, and verify WorldQuant BRAIN or Zendesk Community forum posts using platform-tested HTML components and safe browser/API workflows. Use whenever a user asks to 发帖子、发布帖子、论坛排版、让长帖更好读、把 Markdown/HTML/报告发到 BRAIN 论坛、更新已有论坛帖、上传帖子图片、测试论坛样式, or otherwise wants a polished and reliably published forum post.
+description: Plan the structure, compose, beautify, preview, audit, publish, update, and verify WorldQuant BRAIN or Zendesk Community forum posts using platform-tested HTML components and safe browser/API workflows. Use whenever a user asks to 发帖子、发布帖子、论坛排版、让长帖更好读、根据想法或素材写成论坛帖子、把笔记/Markdown/HTML/报告发到 BRAIN 论坛、更新已有论坛帖、上传帖子图片、测试论坛样式, or otherwise wants a polished and reliably published forum post.
 ---
 
 # BRAIN Post Makeup Artist

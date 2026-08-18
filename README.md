@@ -4,13 +4,15 @@
 
 ## 中文介绍
 
-`brain-post-makeup-artist` 是一个用于 WorldQuant BRAIN / Zendesk Community 论坛的排版、审计、发布和回读 Skill。
+`brain-post-makeup-artist` 是一个用于 WorldQuant BRAIN / Zendesk Community 论坛的**帖子结构设计、排版、审计、发布和回读** Skill。
 
-它把 Markdown 或已有 HTML 整理成论坛兼容的长帖，提供可复用的提示框、KPI 面板、表格、时间线、图片、公式、折叠区和页内导航组件。所有组件都基于论坛实际回读结果，而不是仅凭浏览器预览推测。
+它的起点可以是一句发帖意图、零散笔记、链接与数据、纯文本、Markdown、已有 HTML，或一篇待更新的旧帖。它先根据读者、目标和内容判断应该有什么结构，再产出论坛兼容的正文：摘要、逻辑分段、重点提示、对比表、时间线、图片、公式、折叠细节和页内导航。所有组件都基于论坛实际回读结果，而不是仅凭浏览器预览推测。
 
 ### 主要能力
 
-- Markdown → 论坛兼容 HTML
+- 从发帖意图与素材设计标题、摘要、章节和阅读路径
+- 将笔记、文本、Markdown、HTML 或旧帖重组为论坛兼容 HTML
+- 可选 `preserve`、`polish`、`develop` 三种编辑深度，避免擅自改写事实
 - 严格检查不支持的标签、CSS、外部图片、普通 `id` 和敏感信息
 - 本地图片注册为 `/hc/user_images/...`
 - API 创建、更新和回读帖子
@@ -36,6 +38,18 @@ BRAIN API 登录
 纯 HTTP Support SSO 保留为诊断路径，不是默认发布路径；普通客户端可能在 SSO 阶段收到 403。
 
 ### 快速开始
+
+在 Codex 中可以直接这样说：
+
+```text
+我要在 BRAIN 论坛发一篇给新手看的帖子：解释 XXX。
+核心材料是：……
+希望读者看完能：……
+```
+
+Skill 会先确认受众、目标、标题、发布版块与改写深度；根据需要把素材发展为完整帖子结构。若已有草稿，也可以说“保留原意，只帮我把这篇 Markdown/HTML 排版成论坛帖”。
+
+命令行使用前先配置环境：
 
 ```bash
 uv sync
@@ -100,13 +114,15 @@ uv run playwright install chromium
 
 ## English
 
-`brain-post-makeup-artist` is a formatting, auditing, publishing, and readback Skill for WorldQuant BRAIN / Zendesk Community forums.
+`brain-post-makeup-artist` is a **post-structuring, formatting, auditing, publishing, and readback** Skill for WorldQuant BRAIN / Zendesk Community forums.
 
-It turns Markdown or existing HTML into forum-compatible long-form posts and provides reusable callouts, KPI panels, tables, timelines, figures, formulas, foldouts, and in-page navigation. Components are based on saved platform readbacks, not on browser previews alone.
+It can start with a posting goal, rough notes, links and data, plain text, Markdown, existing HTML, or an older post to update. It first decides on a reader-appropriate structure, then produces a forum-compatible post with a summary, clear sections, key callouts, comparison tables, timelines, figures, formulas, foldouts, and in-page navigation. Components are based on saved platform readbacks, not on browser previews alone.
 
 ### Features
 
-- Markdown-to-forum HTML composition
+- Post architecture from a goal and source materials: title, summary, sections, and reading flow
+- Restructuring of notes, plain text, Markdown, HTML, or an existing post into forum-compatible HTML
+- Optional `preserve`, `polish`, and `develop` editing depth without inventing facts
 - Strict validation of unsupported tags/CSS, external images, ordinary `id` targets, and sensitive text
 - Local image registration as `/hc/user_images/...`
 - API-based post creation, updates, and readback
@@ -132,6 +148,18 @@ The browser is used for Support SSO, anti-bot session establishment, and require
 The pure-HTTP Support SSO path is retained for diagnostics only. Ordinary HTTP clients may receive a 403 before topic lookup.
 
 ### Quick start
+
+In Codex, a request can be as simple as:
+
+```text
+I want to post a beginner-friendly BRAIN forum guide about XXX.
+My source material is: …
+Readers should be able to: …
+```
+
+The Skill first clarifies audience, goal, title, target topic, and editing depth, then develops the materials into a complete post structure as needed. For an existing draft, ask it to preserve the meaning and format the Markdown or HTML as a forum post instead.
+
+For command-line use, configure the environment first:
 
 ```bash
 uv sync
