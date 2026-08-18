@@ -1,0 +1,3 @@
+# Pip-compatible entry point for the repository's validated dependency set.
+# Canonical, hash-resolved lockfile: uv.lock
+-r requirements.lock.txt

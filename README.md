@@ -82,6 +82,14 @@ uv run python scripts/forum_skill.py preview \
 | playwright | `>=1.50` | `1.62.0` | Support SSO、User Image 注册、页面回读 |
 | requests | `>=2.32` | `2.34.2` | BRAIN API 认证与 HTTP 辅助请求 |
 
+也提供 pip 兼容入口，便于不使用 UV 的使用者：
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+`requirements.txt` 会引用精确版本的 `requirements.lock.txt`。两者由 `uv.lock` 导出；`uv.lock` 仍是唯一带工件哈希的权威锁文件，因此维护者更新依赖时应先执行 `uv lock`。
+
 Playwright Python 包和浏览器二进制是两件事。若希望使用匹配版本的 bundled Chromium，可执行：
 
 ```bash
@@ -151,6 +159,14 @@ Compose, audit, and preview a draft with the commands shown in the Chinese secti
 | mistune | `>=3.0` | `3.3.4` | Convert Markdown |
 | playwright | `>=1.50` | `1.62.0` | Support SSO, User Image registration, and page readback |
 | requests | `>=2.32` | `2.34.2` | BRAIN API authentication and HTTP helpers |
+
+A pip-compatible installation entry point is also included for users who do not use UV:
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+`requirements.txt` includes the exact-version `requirements.lock.txt`. Both are exported from `uv.lock`; `uv.lock` remains the only authoritative lockfile with artifact hashes, so maintainers should run `uv lock` first when changing dependencies.
 
 The Playwright Python package and its browser binary are separate dependencies. To install the version-matched bundled Chromium, run:
 

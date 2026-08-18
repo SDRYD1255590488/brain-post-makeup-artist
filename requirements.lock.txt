@@ -1,0 +1,15 @@
+# Pip-compatible resolved dependency set for Python >=3.11.
+# Generated from the repository's canonical uv.lock (without uv's artifact hashes).
+# Refresh with `uv lock`, then update this file from the resolved packages.
+beautifulsoup4==4.15.0
+certifi==2026.7.22
+charset-normalizer==3.5.1
+greenlet==3.5.5
+idna==3.19
+mistune==3.3.4
+playwright==1.62.0
+pyee==13.0.1
+requests==2.34.2
+soupsieve==2.9.2
+typing-extensions==4.16.0
+urllib3==2.7.0
