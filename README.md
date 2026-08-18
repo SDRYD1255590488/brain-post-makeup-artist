@@ -4,15 +4,20 @@
 
 ## 中文介绍
 
-`brain-post-makeup-artist` 是一个用于 WorldQuant BRAIN / Zendesk Community 论坛的**帖子结构设计、排版、审计、发布和回读** Skill。
+`brain-post-makeup-artist` 是一个用于 WorldQuant BRAIN / Zendesk Community 论坛的**帖子结构设计、确定性排版、审计、发布和回读** Codex Skill。
 
-它的起点可以是一句发帖意图、零散笔记、链接与数据、纯文本、Markdown、已有 HTML，或一篇待更新的旧帖。它先根据读者、目标和内容判断应该有什么结构，再产出论坛兼容的正文：摘要、逻辑分段、重点提示、对比表、时间线、图片、公式、折叠细节和页内导航。所有组件都基于论坛实际回读结果，而不是仅凭浏览器预览推测。
+它有两层：Codex 根据用户的发帖目标和素材组织草稿；本仓库的脚本把一个本地 UTF-8 `text`、Markdown 或 HTML 文件稳定转换为论坛兼容 HTML，并负责审计、预览、图片注册、发布与回读。所有组件都基于论坛实际回读结果，而不是仅凭浏览器预览推测。
+
+这意味着“我想发一篇解释 XXX 的帖子，材料如下”是有效的 **Skill 输入**，但不是 CLI 的直接输入：Codex 先把意图和素材写成草稿文件，再调用 `compose`。CLI 不调用大模型，也不会自行补造事实、数据或章节。
 
 ### 主要能力
 
-- 从发帖意图与素材设计标题、摘要、章节和阅读路径
-- 将笔记、文本、Markdown、HTML 或旧帖重组为论坛兼容 HTML
-- 可选 `preserve`、`polish`、`develop` 三种编辑深度，避免擅自改写事实
+- 在 Codex 层，根据发帖目标、受众与素材设计标题、摘要、章节和阅读路径
+- CLI 自动识别或显式接收 `text`、Markdown、HTML；Markdown 支持表格、删除线和代码块
+- 移除/降级正文 `h1`、去掉 `class`，以平台标题为唯一标题；有两个及以上 `h2` 时生成目录、命名锚点和“返回顶部”链接
+- 为首段、标题、引用、表格、代码和分隔线施加三套固定主题之一：`emerald`、`indigo`、`coral`
+- 将已注册的本地图片替换为带说明文字的 `<figure>`；未映射为 `/hc/user_images/...` 的图片会被拒绝
+- 提供可手工拷入草稿的提示框、状态徽章、KPI 面板、进度条、时间线、折叠区、公式和导航组件
 - 严格检查不支持的标签、CSS、外部图片、普通 `id` 和敏感信息
 - 本地图片注册为 `/hc/user_images/...`
 - API 创建、更新和回读帖子
@@ -47,7 +52,18 @@ BRAIN API 登录
 希望读者看完能：……
 ```
 
-Skill 会先确认受众、目标、标题、发布版块与改写深度；根据需要把素材发展为完整帖子结构。若已有草稿，也可以说“保留原意，只帮我把这篇 Markdown/HTML 排版成论坛帖”。
+Skill 先确认受众、目标、标题、发布版块与改写深度，并把素材发展为草稿。若已有草稿，也可以说“保留原意，只帮我把这篇 Markdown/HTML 排版成论坛帖”。只有在用户确认最终标题、目标版块和正文后，Skill 才能执行真实发布。
+
+命令行层的输入与职责如下：
+
+| 输入 | CLI 实际行为 |
+| --- | --- |
+| `*.txt` 或 `--input-type text` | 按空行分段，保存为 `post.md` 后转换 |
+| `*.md` / `*.markdown` | 解析 Markdown 表格、删除线和代码块后转换 |
+| `*.html` / `*.htm` | 保留 HTML 内容并删除 `class`、规范化标题 |
+| 图片 | 必须先经 `upload` 注册，再以 `image-map.json` 传给 `compose` |
+
+`--mode preserve|polish|develop` 会写入 `post-spec.json` 记录上层编辑意图；文字的保留、润色或扩写由 Codex 在生成输入草稿时完成，`compose` 不根据该参数改写文字。
 
 命令行使用前先配置环境：
 
@@ -114,15 +130,20 @@ uv run playwright install chromium
 
 ## English
 
-`brain-post-makeup-artist` is a **post-structuring, formatting, auditing, publishing, and readback** Skill for WorldQuant BRAIN / Zendesk Community forums.
+`brain-post-makeup-artist` is a Codex Skill for **post structuring, deterministic formatting, auditing, publishing, and readback** on WorldQuant BRAIN / Zendesk Community forums.
 
-It can start with a posting goal, rough notes, links and data, plain text, Markdown, existing HTML, or an older post to update. It first decides on a reader-appropriate structure, then produces a forum-compatible post with a summary, clear sections, key callouts, comparison tables, timelines, figures, formulas, foldouts, and in-page navigation. Components are based on saved platform readbacks, not on browser previews alone.
+It has two layers: Codex turns a user's posting goal and source materials into a draft; the scripts in this repository deterministically turn one local UTF-8 `text`, Markdown, or HTML file into forum-compatible HTML, then audit, preview, register images, publish, and read it back. Components are based on saved platform readbacks, not on browser previews alone.
+
+In other words, “I want to post a guide about XXX; here are my materials” is a valid **Skill input**, but not a direct CLI input. Codex writes the draft first and then runs `compose`. The CLI does not call an LLM and does not invent facts, figures, or sections.
 
 ### Features
 
-- Post architecture from a goal and source materials: title, summary, sections, and reading flow
-- Restructuring of notes, plain text, Markdown, HTML, or an existing post into forum-compatible HTML
-- Optional `preserve`, `polish`, and `develop` editing depth without inventing facts
+- At the Codex layer, plan title, summary, sections, and reading flow from a goal, audience, and materials
+- Accept or auto-detect `text`, Markdown, and HTML; Markdown supports tables, strikethrough, and fenced code blocks
+- Remove/demote body `h1`, remove `class`, and generate a table of contents, named anchors, and back-to-top links when there are at least two `h2` headings
+- Apply one of three fixed themes—`emerald`, `indigo`, or `coral`—to the lead paragraph, headings, quotes, tables, code, and rules
+- Replace mapped local images with captioned `<figure>` elements; reject images without a final `/hc/user_images/...` mapping
+- Include copy-ready callout, badge, KPI, progress, timeline, foldout, formula, and navigation snippets
 - Strict validation of unsupported tags/CSS, external images, ordinary `id` targets, and sensitive text
 - Local image registration as `/hc/user_images/...`
 - API-based post creation, updates, and readback
@@ -157,7 +178,18 @@ My source material is: …
 Readers should be able to: …
 ```
 
-The Skill first clarifies audience, goal, title, target topic, and editing depth, then develops the materials into a complete post structure as needed. For an existing draft, ask it to preserve the meaning and format the Markdown or HTML as a forum post instead.
+The Skill first clarifies audience, goal, title, target topic, and editing depth, then develops the materials into a draft. For an existing draft, ask it to preserve the meaning and format the Markdown or HTML as a forum post instead. A live write requires confirmation of the exact title, topic, and final body.
+
+The command-line inputs and responsibilities are:
+
+| Input | Actual CLI behavior |
+| --- | --- |
+| `*.txt` or `--input-type text` | Split paragraphs on blank lines, save `post.md`, then convert it |
+| `*.md` / `*.markdown` | Convert Markdown tables, strikethrough, and fenced code blocks |
+| `*.html` / `*.htm` | Keep the HTML content while stripping `class` and normalizing headings |
+| Images | Register with `upload` first, then pass the resulting `image-map.json` to `compose` |
+
+`--mode preserve|polish|develop` is recorded in `post-spec.json` as the intended upstream editing policy. Preservation, polishing, or development of prose is done by Codex when it creates the input draft; `compose` does not rewrite prose based on that flag.
 
 For command-line use, configure the environment first:
 
