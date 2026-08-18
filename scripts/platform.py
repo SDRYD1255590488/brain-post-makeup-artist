@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
@@ -11,7 +12,7 @@ from bs4 import BeautifulSoup
 from playwright.async_api import Browser, BrowserContext, Page, Playwright, async_playwright
 
 from audit import audit_html, source_counts
-from common import DEFAULT_USER_AGENT, Settings, authenticate_brain, browser_launch_kwargs, playwright_cookies, sha256_text, write_json, write_text
+from common import Settings, authenticate_brain, browser_launch_kwargs, configure_playwright_environment, ensure_no_unknown_operation, playwright_cookies, sha256_text, write_json, write_operation_unknown, write_text
 from render import compose
 
 
@@ -25,23 +26,49 @@ class ForumBrowser:
 
     async def __aenter__(self) -> "ForumBrowser":
         session = authenticate_brain(self.settings)
-        self.playwright = await async_playwright().start()
-        self.browser = await self.playwright.chromium.launch(
-            **browser_launch_kwargs(self.settings.chrome_channel, self.playwright.chromium.executable_path)
-        )
-        self.context = await self.browser.new_context(user_agent=DEFAULT_USER_AGENT)
-        await self.context.add_cookies(playwright_cookies(session))
-        self.page = await self.context.new_page()
-        self.page.set_default_navigation_timeout(120_000)
-        self.page.set_default_timeout(120_000)
-        await self.page.goto(f"{self.settings.brain_api_url}/authentication/support", wait_until="domcontentloaded", timeout=120_000)
-        return self
+        try:
+            configure_playwright_environment(self.settings)
+            cookies = playwright_cookies(session)
+            self.playwright = await async_playwright().start()
+            self.browser = await self.playwright.chromium.launch(
+                **browser_launch_kwargs(
+                    self.settings.chrome_channel,
+                    self.playwright.chromium.executable_path,
+                    headless=self.settings.headless,
+                )
+            )
+            # Keep the browser's native User-Agent aligned with its actual revision;
+            # a hard-coded Chrome version can trigger anti-bot/session inconsistencies.
+            self.context = await self.browser.new_context()
+            await self.context.add_cookies(cookies)
+            self.page = await self.context.new_page()
+            self.page.set_default_navigation_timeout(120_000)
+            self.page.set_default_timeout(120_000)
+            await self.page.goto(f"{self.settings.brain_api_url}/authentication/support", wait_until="domcontentloaded", timeout=120_000)
+            return self
+        except BaseException:
+            try:
+                await self._close()
+            except Exception:
+                pass
+            raise
+        finally:
+            session.close()
 
     async def __aexit__(self, exc_type, exc, tb) -> None:
-        if self.browser:
-            await self.browser.close()
-        if self.playwright:
-            await self.playwright.stop()
+        await self._close()
+
+    async def _close(self) -> None:
+        try:
+            if self.browser:
+                await self.browser.close()
+        finally:
+            self.browser = None
+            self.context = None
+            self.page = None
+            if self.playwright:
+                await self.playwright.stop()
+            self.playwright = None
 
     @property
     def active_page(self) -> Page:
@@ -92,6 +119,7 @@ class ForumBrowser:
         return topic
 
     async def current_post(self, post_id: str, post_url: str) -> dict[str, Any]:
+        validate_community_post_url(self.settings, post_url, post_id=post_id)
         await self.active_page.goto(post_url, wait_until="domcontentloaded")
         result = await self.fetch_json(f"/hc/api/internal/communities/posts/{post_id}")
         if result["status"] != 200:
@@ -104,6 +132,44 @@ class ForumBrowser:
         if not current.get("title") or current.get("topic_id") is None:
             raise RuntimeError("current post is missing title or topic")
         return current
+
+
+def validate_community_post_url(settings: Settings, post_url: str, *, post_id: str | None = None) -> str:
+    parsed = urlparse(post_url)
+    allowed_hosts = {urlparse(settings.support_url).netloc, "worldquantbrain.zendesk.com"}
+    if (
+        parsed.scheme != "https"
+        or parsed.netloc not in allowed_hosts
+        or parsed.username
+        or parsed.password
+        or parsed.query
+        or parsed.fragment
+    ):
+        raise RuntimeError("post URL must use HTTPS on the configured BRAIN Support host")
+    match = re.fullmatch(r"/hc/[^/]+/community/posts/([0-9]+)(?:-[^/]*)?/?", parsed.path)
+    if not match:
+        raise RuntimeError("post URL must be a BRAIN Support community post URL")
+    resolved_id = match.group(1)
+    if post_id is not None and resolved_id != str(post_id):
+        raise RuntimeError("post URL does not match the confirmed Post ID")
+    return post_url
+
+
+def resolve_manifest_image(image_dir: Path, filename: str) -> Path:
+    base = image_dir.resolve()
+    candidate = (base / filename).resolve()
+    try:
+        candidate.relative_to(base)
+    except ValueError as exc:
+        raise RuntimeError("image manifest filename escapes the configured image directory") from exc
+    if not candidate.is_file():
+        raise FileNotFoundError(candidate)
+    if candidate.suffix.lower() not in {".gif", ".jpeg", ".jpg", ".png"}:
+        raise RuntimeError(f"unsupported image file type: {candidate.suffix or 'none'}")
+    size = candidate.stat().st_size
+    if size <= 0 or size > 2_000_000:
+        raise RuntimeError("Zendesk User Images must be between 1 byte and 2 MB")
+    return candidate
 
 
 async def rendered_body(page: Page) -> tuple[str, str]:
@@ -141,7 +207,6 @@ async def verify_post(client: ForumBrowser, post_id: str, post_url: str, output_
     write_text(output_dir / "rendered.html", rendered_html)
     write_text(output_dir / "visible.txt", visible_text, sanitize=True)
     write_json(output_dir / "metadata.json", result)
-    await page.screenshot(path=str(output_dir / "rendered.png"), full_page=True)
     return result
 
 
@@ -150,8 +215,12 @@ async def upload_images_with_client(client: ForumBrowser, manifest_path: Path, i
     if not isinstance(manifest, list):
         raise RuntimeError("image manifest must be a JSON list")
     mapping = json.loads(mapping_path.read_text(encoding="utf-8")) if mapping_path.exists() else {}
+    if not isinstance(mapping, dict):
+        raise RuntimeError("image mapping must be a JSON object")
     pending: list[dict[str, str]] = []
     for row in manifest:
+        if not isinstance(row, dict):
+            raise RuntimeError("every image manifest row must be an object")
         key, filename = str(row.get("key") or ""), str(row.get("filename") or "")
         if not key or not filename:
             raise RuntimeError("every image row needs key and filename")
@@ -159,6 +228,10 @@ async def upload_images_with_client(client: ForumBrowser, manifest_path: Path, i
             pending.append({"key": key, "filename": filename})
     if limit > 0:
         pending = pending[:limit]
+    validated_images = {
+        row["filename"]: resolve_manifest_image(image_dir, row["filename"])
+        for row in pending
+    }
     output_dir.mkdir(parents=True, exist_ok=True)
     upload_unknown = output_dir / "upload-unknown.json"
     if upload_unknown.exists():
@@ -167,6 +240,7 @@ async def upload_images_with_client(client: ForumBrowser, manifest_path: Path, i
     page = client.active_page
     settings = client.settings
     if post_url:
+        validate_community_post_url(settings, post_url)
         await page.goto(post_url, wait_until="domcontentloaded")
         await page.get_by_role("button", name="Post actions").click()
         await page.get_by_role("menuitem", name="Edit").click()
@@ -174,13 +248,12 @@ async def upload_images_with_client(client: ForumBrowser, manifest_path: Path, i
         file_input = page.locator('[role="dialog"] input[type="file"][accept*="image"]')
     else:
         await page.goto(f"{settings.support_url}/hc/{settings.locale}/community/posts/new", wait_until="domcontentloaded")
-        file_input = page.locator('#hc-wysiwyg input[type="file"][accept*="image"]')
+        file_input = page.locator('input[type="file"][accept*="image"]')
+        await file_input.wait_for(state="attached", timeout=120_000)
     if await file_input.count() != 1:
         raise RuntimeError("the forum image input was not found; editor structure may have changed")
     for index, row in enumerate(pending, start=1):
-        image_path = image_dir / row["filename"]
-        if not image_path.is_file():
-            raise FileNotFoundError(image_path)
+        image_path = validated_images[row["filename"]]
         dispatched = False
         try:
             async with page.expect_response(
@@ -196,7 +269,11 @@ async def upload_images_with_client(client: ForumBrowser, manifest_path: Path, i
             raise
         if response.status not in {200, 201}:
             raise RuntimeError(f"image registration failed for {image_path.name}: {response.status}")
-        payload = await response.json()
+        try:
+            payload = await response.json()
+        except Exception as exc:
+            write_json(upload_unknown, {"filename": row["filename"], "reason": "successful registration response was not JSON"})
+            raise RuntimeError("image registration result is unknown; inspect the editor before retrying") from exc
         user_path = str((payload.get("user_image") or {}).get("path") or "")
         if not user_path.startswith("/hc/user_images/"):
             write_json(upload_unknown, {"filename": row["filename"], "reason": "registration response lacked final User Image path"})
@@ -221,8 +298,7 @@ async def upload_images(manifest_path: Path, image_dir: Path, mapping_path: Path
 
 def ensure_write_directory(output_dir: Path) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
-    if (output_dir / "operation_unknown.json").exists():
-        raise RuntimeError("a previous operation is unknown; verify platform state before another write")
+    ensure_no_unknown_operation(output_dir)
 
 
 async def publish_post(html_path: Path, title: str, confirm_title: str, topic_id: int, topic_name: str | None, output_dir: Path, *, strict: bool) -> dict[str, Any]:
@@ -239,37 +315,173 @@ async def publish_post(html_path: Path, title: str, confirm_title: str, topic_id
     if not audit["ok"] or (strict and audit["warnings"]):
         raise RuntimeError("preflight audit failed")
     settings = Settings.from_env()
-    dispatched = False
     async with ForumBrowser(settings) as client:
-        topic = await client.resolve_topic(topic_id, topic_name)
-        csrf = await client.csrf()
-        try:
-            dispatched = True
-            response = await client.fetch_json(
-                "/api/v2/community/posts.json",
-                method="POST",
-                csrf=csrf,
-                body={"post": {"title": title, "details": html, "topic_id": topic_id}, "notify_subscribers": False},
-            )
-        except Exception as exc:
-            if dispatched:
-                write_json(output_dir / "operation_unknown.json", {"operation": "create", "reason": type(exc).__name__})
-            raise
+        return await create_post_with_client(client, html, title, topic_id, topic_name, output_dir)
+
+
+async def create_post_with_client(
+    client: ForumBrowser,
+    html: str,
+    title: str,
+    topic_id: int,
+    topic_name: str | None,
+    output_dir: Path,
+    *,
+    readback_dirname: str = "readback",
+) -> dict[str, Any]:
+    """Create exactly once and read back while retaining the caller's Support session."""
+    topic = await client.resolve_topic(topic_id, topic_name)
+    csrf = await client.csrf()
+    dispatched = False
+    try:
+        dispatched = True
+        response = await client.fetch_json(
+            "/api/v2/community/posts.json",
+            method="POST",
+            csrf=csrf,
+            body={"post": {"title": title, "details": html, "topic_id": topic_id}, "notify_subscribers": False},
+        )
+    except Exception as exc:
+        if dispatched:
+            write_operation_unknown(output_dir, {"operation": "create", "reason": type(exc).__name__})
+        raise
+    try:
         parsed = json.loads(response["text"]) if response["text"].strip().startswith("{") else {"body": response["text"]}
-        write_json(output_dir / "create-response.json", {"status": response["status"], "payload": parsed})
-        if response["status"] not in {200, 201}:
-            raise RuntimeError(f"post creation failed with status {response['status']}")
-        post = parsed.get("post") or {}
-        post_id, post_url = str(post.get("id") or ""), str(post.get("html_url") or "")
-        if not post_id.isdigit() or not post_url:
-            write_json(output_dir / "operation_unknown.json", {"operation": "create", "reason": "success response lacked post identity"})
-            raise RuntimeError("create response lacks a post ID or URL")
-        if urlparse(post_url).netloc not in {urlparse(settings.support_url).netloc, "worldquantbrain.zendesk.com"}:
-            raise RuntimeError("create response returned an unexpected host")
-        created: dict[str, Any] = {"post_id": post_id, "post_url": post_url, "title": title, "topic_id": topic_id, "topic_name": topic.get("name")}
-        write_json(marker, created)
-        created["verification"] = await verify_post(client, post_id, post_url, output_dir / "readback", source_html=html)
-        write_json(marker, created)
+    except json.JSONDecodeError as exc:
+        if response["status"] in {200, 201}:
+            write_operation_unknown(output_dir, {"operation": "create", "reason": "successful response was malformed JSON"})
+            raise RuntimeError("create result is unknown; inspect the topic before retrying") from exc
+        parsed = {"body": response["text"]}
+    write_json(output_dir / "create-response.json", {"status": response["status"], "payload": parsed})
+    if response["status"] not in {200, 201}:
+        raise RuntimeError(f"post creation failed with status {response['status']}")
+    post = parsed.get("post") or {}
+    post_id, post_url = str(post.get("id") or ""), str(post.get("html_url") or "")
+    if not post_id.isdigit() or not post_url:
+        write_operation_unknown(output_dir, {"operation": "create", "reason": "success response lacked post identity"})
+        raise RuntimeError("create response lacks a post ID or URL")
+    try:
+        validate_community_post_url(client.settings, post_url, post_id=post_id)
+    except RuntimeError:
+        write_operation_unknown(output_dir, {"operation": "create", "reason": "success response returned an invalid post identity"})
+        raise
+    created: dict[str, Any] = {
+        "post_id": post_id,
+        "post_url": post_url,
+        "title": title,
+        "topic_id": topic_id,
+        "topic_name": topic.get("name"),
+    }
+    marker = output_dir / "created-post.json"
+    write_json(marker, created)
+    created["verification"] = await verify_post(client, post_id, post_url, output_dir / readback_dirname, source_html=html)
+    write_json(marker, created)
+    return created
+
+
+async def publish_source(
+    input_path: Path,
+    title: str,
+    confirm_title: str,
+    topic_id: int,
+    topic_name: str | None,
+    output_dir: Path,
+    *,
+    mode: str,
+    theme: str,
+    browser_channel: str | None,
+    strict: bool,
+    manifest_path: Path | None = None,
+    image_dir: Path | None = None,
+) -> dict[str, Any]:
+    """Upload, compose, create, and read back in one authenticated browser context."""
+    if title != confirm_title:
+        raise RuntimeError("confirmed title must exactly match the title")
+    if (manifest_path is None) != (image_dir is None):
+        raise RuntimeError("--manifest and --image-dir must be supplied together")
+    ensure_write_directory(output_dir)
+    if (output_dir / "created-post.json").exists():
+        raise RuntimeError("duplicate protection: this output directory already records a successful create")
+
+    preflight_mapping_path: Path | None = None
+    if manifest_path is not None and image_dir is not None:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if not isinstance(manifest, list):
+            raise RuntimeError("image manifest must be a JSON list")
+        if not manifest:
+            raise RuntimeError("image manifest is empty; omit both image arguments instead")
+        preflight_mapping: dict[str, str] = {}
+        for index, row in enumerate(manifest, start=1):
+            if not isinstance(row, dict):
+                raise RuntimeError("every image manifest row must be an object")
+            key, filename = str(row.get("key") or ""), str(row.get("filename") or "")
+            if not key or not filename:
+                raise RuntimeError("every image row needs key and filename")
+            resolve_manifest_image(image_dir, filename)
+            placeholder = f"/hc/user_images/preflight-{index}.png"
+            preflight_mapping[key] = placeholder
+            preflight_mapping[filename] = placeholder
+        preflight_mapping_path = output_dir / "preflight-image-map.json"
+        write_json(preflight_mapping_path, preflight_mapping)
+
+    local_preflight_dir = output_dir / "local-preflight"
+    compose(
+        input_path,
+        title,
+        local_preflight_dir,
+        mode=mode,
+        theme_name=theme,
+        image_map_path=preflight_mapping_path,
+        navigation=True,
+    )
+    local_html = (local_preflight_dir / "post.html").read_text(encoding="utf-8")
+    local_audit = audit_html(local_html, title=title)
+    write_json(output_dir / "local-preflight.json", local_audit)
+    if not local_audit["ok"] or (strict and local_audit["warnings"]):
+        raise RuntimeError("local preflight audit failed before platform access")
+
+    base_settings = Settings.from_env()
+    settings = replace(base_settings, chrome_channel=browser_channel) if browser_channel else base_settings
+    mapping_path = output_dir / "image-map.json"
+    draft_dir = output_dir / "draft"
+    async with ForumBrowser(settings) as client:
+        await client.resolve_topic(topic_id, topic_name)
+        upload_result: dict[str, Any] | None = None
+        if manifest_path is not None and image_dir is not None:
+            upload_result = await upload_images_with_client(
+                client,
+                manifest_path,
+                image_dir,
+                mapping_path,
+                output_dir / "upload",
+                interval=0.35,
+                limit=0,
+                post_url=None,
+            )
+        if manifest_path is not None:
+            if not mapping_path.exists():
+                raise RuntimeError("image upload completed without a permanent image mapping")
+            compose(
+                input_path,
+                title,
+                draft_dir,
+                mode=mode,
+                theme_name=theme,
+                image_map_path=mapping_path,
+                navigation=True,
+            )
+            html = (draft_dir / "post.html").read_text(encoding="utf-8")
+        else:
+            html = local_html
+        audit = audit_html(html, title=title)
+        write_json(output_dir / "preflight.json", audit)
+        write_text(output_dir / "submitted-source.html", html)
+        if not audit["ok"] or (strict and audit["warnings"]):
+            raise RuntimeError("preflight audit failed")
+        created = await create_post_with_client(client, html, title, topic_id, topic_name, output_dir)
+        created["browser_processes"] = 1
+        created["image_upload"] = upload_result
+        write_json(output_dir / "created-post.json", created)
         return created
 
 
@@ -306,7 +518,7 @@ async def update_post(post_id: str, confirm_post_id: str, post_url: str, html_pa
             )
         except Exception as exc:
             if dispatched:
-                write_json(output_dir / "operation_unknown.json", {"operation": "probe" if probe else "update", "post_id": post_id, "reason": type(exc).__name__})
+                write_operation_unknown(output_dir, {"operation": "probe" if probe else "update", "post_id": post_id, "reason": type(exc).__name__})
             raise
         parsed = json.loads(response["text"]) if response["text"].strip().startswith("{") else {"body": response["text"]}
         write_json(output_dir / "update-response.json", {"status": response["status"], "payload": parsed})
@@ -345,7 +557,7 @@ async def run_acceptance(
     *,
     mode: str,
     theme: str,
-    browser_channel: str,
+    browser_channel: str | None,
 ) -> dict[str, Any]:
     """Run one retained create and one update in a single browser process."""
     if title != confirm_title:
@@ -357,10 +569,10 @@ async def run_acceptance(
     if marker.exists():
         raise RuntimeError("duplicate protection: this acceptance run already completed")
     output_dir.mkdir(parents=True, exist_ok=True)
-    settings = replace(Settings.from_env(), chrome_channel=browser_channel)
+    base_settings = Settings.from_env()
+    settings = replace(base_settings, chrome_channel=browser_channel) if browser_channel else base_settings
     mapping_path = output_dir / "image-map.json"
     draft_dir = output_dir / "draft"
-    dispatched_create = False
     dispatched_update = False
 
     async with ForumBrowser(settings) as client:
@@ -391,32 +603,17 @@ async def run_acceptance(
         if not audit["ok"] or audit["warnings"]:
             raise RuntimeError("acceptance create preflight must have zero errors and warnings")
 
-        topic = await client.resolve_topic(topic_id, topic_name)
-        csrf = await client.csrf()
-        try:
-            dispatched_create = True
-            response = await client.fetch_json(
-                "/api/v2/community/posts.json",
-                method="POST",
-                csrf=csrf,
-                body={"post": {"title": title, "details": html, "topic_id": topic_id}, "notify_subscribers": False},
-            )
-        except Exception as exc:
-            if dispatched_create:
-                write_json(output_dir / "operation_unknown.json", {"operation": "acceptance-create", "reason": type(exc).__name__})
-            raise
-        parsed = json.loads(response["text"]) if response["text"].strip().startswith("{") else {"body": response["text"]}
-        write_json(output_dir / "create-response.json", {"status": response["status"], "payload": parsed})
-        if response["status"] not in {200, 201}:
-            raise RuntimeError(f"acceptance create failed with status {response['status']}")
-        post = parsed.get("post") or {}
-        post_id, post_url = str(post.get("id") or ""), str(post.get("html_url") or "")
-        if not post_id.isdigit() or not post_url:
-            write_json(output_dir / "operation_unknown.json", {"operation": "acceptance-create", "reason": "success response lacked post identity"})
-            raise RuntimeError("acceptance create response lacks post identity")
-        created = {"post_id": post_id, "post_url": post_url, "title": title, "topic_id": topic_id, "topic_name": topic.get("name")}
-        write_json(output_dir / "created-post.json", created)
-        create_readback = await verify_post(client, post_id, post_url, output_dir / "create-readback", source_html=html)
+        created = await create_post_with_client(
+            client,
+            html,
+            title,
+            topic_id,
+            topic_name,
+            output_dir,
+            readback_dirname="create-readback",
+        )
+        post_id, post_url = created["post_id"], created["post_url"]
+        create_readback = created["verification"]
 
         updated_html = acceptance_update_html(html)
         update_audit = audit_html(updated_html)
@@ -437,7 +634,7 @@ async def run_acceptance(
             )
         except Exception as exc:
             if dispatched_update:
-                write_json(output_dir / "operation_unknown.json", {"operation": "acceptance-update", "post_id": post_id, "reason": type(exc).__name__})
+                write_operation_unknown(output_dir, {"operation": "acceptance-update", "post_id": post_id, "reason": type(exc).__name__})
             raise
         update_parsed = json.loads(update_response["text"]) if update_response["text"].strip().startswith("{") else {"body": update_response["text"]}
         write_json(output_dir / "update-response.json", {"status": update_response["status"], "payload": update_parsed})

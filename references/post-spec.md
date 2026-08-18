@@ -1,5 +1,9 @@
 # Post specification
 
+The `mode` field records the Agent's editing contract (`preserve`, `polish`, or
+`develop`). It does not cause the deterministic renderer to rewrite prose. Any
+content-level edits must already be present in the input supplied to `compose`.
+
 `post-spec.json` is the reproducible composition contract.
 
 ```json

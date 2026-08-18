@@ -2,36 +2,63 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import requests
 
 from audit import audit_html, source_counts
-from common import Settings, authenticate_brain, sha256_text, write_json, write_text
+from common import Settings, authenticate_brain, ensure_no_unknown_operation, sha256_text, write_json, write_operation_unknown, write_text
 
 
 def establish_support_session(settings: Settings) -> tuple[requests.Session, str]:
     """Establish BRAIN -> Support SSO using HTTP only, with no retries."""
-    session = authenticate_brain(settings)
+    # Bypass shell proxy settings for the BRAIN -> Zendesk SSO exchange. The
+    # redirect chain writes the required cookies before its final Help Center
+    # HTML page, which may itself be blocked with 403.
+    session = authenticate_brain(settings, trust_env=False)
+    session.headers.update(
+        {
+            "User-Agent": "Mozilla/5.0",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        }
+    )
+    return_to = f"{settings.support_url}/hc/{settings.locale}/community/topics"
     exchange = session.get(
         f"{settings.brain_api_url}/authentication/support",
+        params={"return_to": return_to},
         timeout=60,
-        allow_redirects=True,
+        allow_redirects=False,
     )
-    if exchange.status_code != 200:
-        raise RuntimeError(f"pure API support exchange failed with status {exchange.status_code}")
-    bootstrap = session.get(
-        f"{settings.support_url}/hc/{settings.locale}/community/topics",
-        timeout=60,
-    )
-    if bootstrap.status_code != 200:
-        raise RuntimeError(f"pure API support bootstrap failed with status {bootstrap.status_code}")
+    allowed_hosts = {
+        urlparse(settings.brain_api_url).netloc,
+        urlparse(settings.support_url).netloc,
+        "worldquantbrain.zendesk.com",
+    }
+    for _ in range(12):
+        if exchange.status_code not in {301, 302, 303, 307, 308}:
+            break
+        location = str(exchange.headers.get("Location") or "")
+        if not location:
+            raise RuntimeError("pure API support redirect is missing Location")
+        next_url = urljoin(str(exchange.url), location)
+        parsed = urlparse(next_url)
+        if parsed.scheme != "https" or parsed.netloc not in allowed_hosts:
+            raise RuntimeError("pure API support redirect returned an unexpected host")
+        exchange = session.get(next_url, timeout=60, allow_redirects=False)
+    else:
+        raise RuntimeError("pure API support exchange exceeded the redirect limit")
+
+    # Do not require the final HTML response to be 200. BRAIN Support may
+    # return 403 for that page after the SSO cookies have already been set.
+    # The session endpoint below is the authoritative authentication check.
     session_response = session.get(
         f"{settings.support_url}/api/v2/help_center/sessions.json",
         timeout=60,
         headers={"Accept": "application/json"},
+        allow_redirects=False,
     )
     if session_response.status_code != 200:
         raise RuntimeError(f"pure API support session failed with status {session_response.status_code}")
@@ -71,8 +98,7 @@ def pure_api_publish(
     if title != confirm_title:
         raise RuntimeError("confirmed title must exactly match the title")
     output_dir.mkdir(parents=True, exist_ok=True)
-    if (output_dir / "operation-unknown.json").exists():
-        raise RuntimeError("previous pure API create is unknown; inspect platform state first")
+    ensure_no_unknown_operation(output_dir)
     marker = output_dir / "created-post.json"
     if marker.exists():
         raise RuntimeError("duplicate protection: this pure API run already created a post")
@@ -113,7 +139,7 @@ def pure_api_publish(
         )
     except requests.RequestException as exc:
         if dispatched:
-            write_json(output_dir / "operation-unknown.json", {"operation": "pure-api-create", "reason": type(exc).__name__})
+            write_operation_unknown(output_dir, {"operation": "pure-api-create", "reason": type(exc).__name__})
         raise RuntimeError("pure API create result is unknown; do not retry") from exc
 
     payload: dict[str, Any]
@@ -127,9 +153,15 @@ def pure_api_publish(
     post = payload.get("post") or {}
     post_id, post_url = str(post.get("id") or ""), str(post.get("html_url") or "")
     if not post_id.isdigit() or not post_url:
-        write_json(output_dir / "operation-unknown.json", {"operation": "pure-api-create", "reason": "success response lacked post identity"})
+        write_operation_unknown(output_dir, {"operation": "pure-api-create", "reason": "success response lacked post identity"})
         raise RuntimeError("pure API create response lacks post identity")
-    if urlparse(post_url).netloc not in {urlparse(settings.support_url).netloc, "worldquantbrain.zendesk.com"}:
+    parsed_post_url = urlparse(post_url)
+    if (
+        parsed_post_url.scheme != "https"
+        or parsed_post_url.netloc not in {urlparse(settings.support_url).netloc, "worldquantbrain.zendesk.com"}
+        or re.fullmatch(rf"/hc/[^/]+/community/posts/{re.escape(post_id)}(?:-[^/]*)?/?", parsed_post_url.path) is None
+    ):
+        write_operation_unknown(output_dir, {"operation": "pure-api-create", "reason": "success response returned an invalid post identity"})
         raise RuntimeError("pure API create response returned an unexpected host")
     created = {
         "post_id": post_id,

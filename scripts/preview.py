@@ -4,16 +4,7 @@ from __future__ import annotations
 from html import escape
 from pathlib import Path
 
-from playwright.async_api import async_playwright
-
-from common import Settings, browser_launch_kwargs, write_json, write_text
-
-
-VIEWPORTS = {
-    "desktop": {"width": 1280, "height": 900},
-    "tablet": {"width": 768, "height": 900},
-    "mobile": {"width": 390, "height": 844},
-}
+from common import write_json, write_text
 
 
 def wrapper(body: str, title: str) -> str:
@@ -40,27 +31,11 @@ pre {{ overflow: auto; }}
 """
 
 
-async def create_preview(html_path: Path, output_dir: Path, title: str, *, screenshots: bool = True) -> dict[str, object]:
+async def create_preview(html_path: Path, output_dir: Path, title: str) -> dict[str, object]:
     body = html_path.read_text(encoding="utf-8")
     output_dir.mkdir(parents=True, exist_ok=True)
     rendered = output_dir / "rendered.html"
     write_text(rendered, wrapper(body, title))
-    result: dict[str, object] = {"rendered_html": str(rendered), "screenshots": {}}
-    if screenshots:
-        settings = Settings.from_env(require_credentials=False)
-        async with async_playwright() as playwright:
-            browser = await playwright.chromium.launch(
-                **browser_launch_kwargs(settings.chrome_channel, playwright.chromium.executable_path)
-            )
-            try:
-                for name, viewport in VIEWPORTS.items():
-                    page = await browser.new_page(viewport=viewport)
-                    await page.goto(rendered.resolve().as_uri(), wait_until="load")
-                    target = output_dir / f"{name}.png"
-                    await page.screenshot(path=str(target), full_page=True)
-                    result["screenshots"][name] = str(target)
-                    await page.close()
-            finally:
-                await browser.close()
+    result: dict[str, object] = {"rendered_html": str(rendered)}
     write_json(output_dir / "preview.json", result)
     return result

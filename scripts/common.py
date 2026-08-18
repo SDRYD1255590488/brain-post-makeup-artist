@@ -59,6 +59,8 @@ AUTH_RE = re.compile(r"(?i)\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}")
 EMAIL_RE = re.compile(r"(?<![\w.+-])[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}(?![\w.-])", re.I)
 COOKIE_RE = re.compile(r"(?i)(cookie|set-cookie)\s*:\s*[^\r\n]+")
 PASSWORD_RE = re.compile(r"(?i)(password|passwd|pwd)\s*[=:]\s*[^\s,;]+")
+OPERATION_UNKNOWN_FILENAME = "operation_unknown.json"
+LEGACY_OPERATION_UNKNOWN_FILENAMES = ("operation-unknown.json",)
 
 
 def load_env(path: Path | None = None) -> dict[str, str]:
@@ -90,6 +92,8 @@ class Settings:
     locale: str
     artifact_dir: Path
     chrome_channel: str
+    playwright_browsers_path: Path = SKILL_ROOT / ".playwright-browsers"
+    headless: bool = True
 
     @classmethod
     def from_env(cls, path: Path | None = None, require_credentials: bool = True) -> "Settings":
@@ -106,13 +110,15 @@ class Settings:
             locale=values.get("BRAIN_FORUM_LOCALE", "en-us").strip("/"),
             artifact_dir=Path(values.get("BRAIN_FORUM_ARTIFACT_DIR", ".forum-runs")),
             chrome_channel=values.get("BRAIN_FORUM_CHROME_CHANNEL", "chromium"),
+            playwright_browsers_path=(SKILL_ROOT / values.get("BRAIN_FORUM_PLAYWRIGHT_BROWSERS_PATH", ".playwright-browsers")).resolve(),
+            headless=values.get("BRAIN_FORUM_HEADLESS", "true").strip().lower() not in {"0", "false", "no"},
         )
 
 
-def browser_launch_kwargs(channel: str, bundled_executable: str | Path | None = None) -> dict[str, Any]:
+def browser_launch_kwargs(channel: str, bundled_executable: str | Path | None = None, *, headless: bool = True) -> dict[str, Any]:
     """Select a browser without attempting a failed launch as a fallback probe."""
     kwargs: dict[str, Any] = {
-        "headless": True,
+        "headless": headless,
         "args": ["--no-sandbox"],
     }
     normalized = channel.strip().lower()
@@ -125,10 +131,15 @@ def browser_launch_kwargs(channel: str, bundled_executable: str | Path | None = 
         kwargs["channel"] = channel
     elif bundled_executable is not None and not Path(bundled_executable).is_file():
         raise RuntimeError(
-            "Playwright bundled Chromium is missing; run `uv run playwright install chromium` "
+            "Playwright bundled Chromium is missing; run `uv run python scripts/install_browser.py` "
             "or set BRAIN_FORUM_CHROME_CHANNEL=chrome"
         )
     return kwargs
+
+
+def configure_playwright_environment(settings: Settings) -> None:
+    """Keep every Playwright entry point on the installer-managed browser cache."""
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(settings.playwright_browsers_path)
 
 
 def sha256_text(text: str) -> str:
@@ -181,8 +192,25 @@ def write_text(path: Path, value: str, *, sanitize: bool = False) -> None:
     path.write_text(sanitize_text(value) if sanitize else value, encoding="utf-8")
 
 
-def authenticate_brain(settings: Settings) -> requests.Session:
+def ensure_no_unknown_operation(output_dir: Path) -> None:
+    names = (OPERATION_UNKNOWN_FILENAME, *LEGACY_OPERATION_UNKNOWN_FILENAMES)
+    present = [name for name in names if (output_dir / name).exists()]
+    if present:
+        raise RuntimeError(
+            "a previous operation is unknown; verify platform state before another write "
+            f"({', '.join(present)})"
+        )
+
+
+def write_operation_unknown(output_dir: Path, payload: Any) -> Path:
+    marker = output_dir / OPERATION_UNKNOWN_FILENAME
+    write_json(marker, payload)
+    return marker
+
+
+def authenticate_brain(settings: Settings, *, trust_env: bool = True) -> requests.Session:
     session = requests.Session()
+    session.trust_env = trust_env
     session.headers.update({"User-Agent": DEFAULT_USER_AGENT})
     response = session.post(
         f"{settings.brain_api_url}/authentication",

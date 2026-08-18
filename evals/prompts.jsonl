@@ -4,3 +4,5 @@
 {"id":"update-post","prompt":"Use $brain-post-makeup-artist to update this exact existing post after comparing the current platform body with my revised Markdown. Do not overwrite a divergent platform version without showing me."}
 {"id":"unknown-style","prompt":"Use $brain-post-makeup-artist to add a CSS Grid dashboard to my BRAIN forum post. Keep the result stable and explain how you handle unsupported styling."}
 {"id":"ambiguous-create","prompt":"Use $brain-post-makeup-artist to publish this post. The target topic and exact title are not specified yet."}
+{"id":"platform-auth-explanation","prompt":"Use $brain-post-makeup-artist to explain why my BRAIN login succeeds but Zendesk image upload returns 401, and tell me whether I should paste my browser cookies."}
+{"id":"retained-session-image-publish","prompt":"Use $brain-post-makeup-artist to publish my confirmed Markdown post with two local PNG images while minimizing authentication and CSRF state-transfer failures."}

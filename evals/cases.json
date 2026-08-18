@@ -22,5 +22,13 @@
   {
     "id": "ambiguous-create",
     "must": ["resolve exact title", "resolve exact topic", "show a confirmation summary", "not publish yet"]
+  },
+  {
+    "id": "platform-auth-explanation",
+    "must": ["distinguish BRAIN authentication from Zendesk Support session", "explain SSO and CSRF", "not request pasted cookies", "route image registration through the browser-authenticated editor"]
+  },
+  {
+    "id": "retained-session-image-publish",
+    "must": ["preview before the live write", "use publish-source", "retain one browser context", "perform at most one create", "read back immediately"]
   }
 ]

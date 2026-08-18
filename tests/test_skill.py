@@ -1,12 +1,15 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import subprocess
 import sys
 import tempfile
 import unittest
+from types import SimpleNamespace
 from pathlib import Path
+from unittest.mock import patch
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -14,10 +17,12 @@ SCRIPTS = ROOT / "scripts"
 sys.path.insert(0, str(SCRIPTS))
 
 from audit import audit_html  # noqa: E402
-from common import Settings, browser_launch_kwargs, sanitize_data, sanitize_text, sha256_text  # noqa: E402
+from common import Settings, browser_launch_kwargs, ensure_no_unknown_operation, sanitize_data, sanitize_text, sha256_text, write_operation_unknown  # noqa: E402
 from configure_env import configure  # noqa: E402
-from platform import acceptance_update_html, ensure_write_directory  # noqa: E402
-from preview import wrapper  # noqa: E402
+from forum_skill import doctor  # noqa: E402
+from platform import ForumBrowser, acceptance_update_html, ensure_write_directory, publish_source, resolve_manifest_image, validate_community_post_url  # noqa: E402
+from preview import create_preview, wrapper  # noqa: E402
+from pure_api import establish_support_session  # noqa: E402
 from render import compose  # noqa: E402
 
 
@@ -139,6 +144,121 @@ class SkillTests(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "unknown"):
             ensure_write_directory(output)
 
+    def test_legacy_unknown_operation_marker_also_blocks_write(self) -> None:
+        output = self.work / "run"
+        output.mkdir()
+        (output / "operation-unknown.json").write_text("{}", encoding="utf-8")
+        with self.assertRaisesRegex(RuntimeError, "unknown"):
+            ensure_no_unknown_operation(output)
+
+    def test_unknown_operation_writer_uses_canonical_name(self) -> None:
+        marker = write_operation_unknown(self.work / "run", {"operation": "create"})
+        self.assertEqual(marker.name, "operation_unknown.json")
+        self.assertTrue(marker.is_file())
+
+    def test_post_url_is_bound_to_support_host_and_post_id(self) -> None:
+        settings = Settings.from_env(self.work / "missing.env", require_credentials=False)
+        valid = "https://support.worldquantbrain.com/hc/en-us/community/posts/12345-title"
+        self.assertEqual(validate_community_post_url(settings, valid, post_id="12345"), valid)
+        with self.assertRaisesRegex(RuntimeError, "Post ID"):
+            validate_community_post_url(settings, valid, post_id="999")
+        with self.assertRaisesRegex(RuntimeError, "Support host"):
+            validate_community_post_url(settings, "https://example.com/hc/en-us/community/posts/12345-title")
+
+    def test_manifest_image_cannot_escape_image_directory(self) -> None:
+        image_dir = self.work / "images"
+        image_dir.mkdir()
+        (image_dir / "ok.png").write_bytes(b"png")
+        outside = self.work / "outside.png"
+        outside.write_bytes(b"png")
+        self.assertEqual(resolve_manifest_image(image_dir, "ok.png"), (image_dir / "ok.png").resolve())
+        with self.assertRaisesRegex(RuntimeError, "escapes"):
+            resolve_manifest_image(image_dir, "../outside.png")
+
+    def test_forum_browser_cleans_up_when_launch_fails(self) -> None:
+        executable = self.work / "chromium"
+        executable.touch()
+
+        class FakeSession:
+            cookies: list[object] = []
+
+            def __init__(self) -> None:
+                self.closed = False
+
+            def close(self) -> None:
+                self.closed = True
+
+        class FakeChromium:
+            executable_path = str(executable)
+
+            async def launch(self, **kwargs: object) -> None:
+                raise RuntimeError("launch failed")
+
+        class FakePlaywright:
+            def __init__(self) -> None:
+                self.chromium = FakeChromium()
+                self.stopped = False
+
+            async def stop(self) -> None:
+                self.stopped = True
+
+        class FakeStarter:
+            def __init__(self, playwright: FakePlaywright) -> None:
+                self.playwright = playwright
+
+            async def start(self) -> FakePlaywright:
+                return self.playwright
+
+        session = FakeSession()
+        playwright = FakePlaywright()
+        settings = Settings.from_env(self.work / "missing.env", require_credentials=False)
+        with patch("platform.authenticate_brain", return_value=session), patch("platform.async_playwright", return_value=FakeStarter(playwright)):
+            with self.assertRaisesRegex(RuntimeError, "launch failed"):
+                asyncio.run(ForumBrowser(settings).__aenter__())
+        self.assertTrue(session.closed)
+        self.assertTrue(playwright.stopped)
+
+    def test_combined_doctor_checks_support_csrf_in_same_browser_context(self) -> None:
+        settings = Settings.from_env(self.work / "missing.env", require_credentials=False)
+
+        class FakeForumBrowser:
+            def __init__(self, supplied: Settings) -> None:
+                self.settings = supplied
+
+            async def __aenter__(self) -> "FakeForumBrowser":
+                return self
+
+            async def __aexit__(self, *args: object) -> None:
+                return None
+
+            async def csrf(self) -> str:
+                return "not-emitted"
+
+        with patch("forum_skill.Settings.from_env", return_value=settings), patch("platform.ForumBrowser", FakeForumBrowser):
+            result = asyncio.run(doctor(SimpleNamespace(auth=True, browser=True)))
+        self.assertEqual(result["authentication"], "ok")
+        self.assertEqual(result["support_session"], "ok")
+        self.assertNotIn("not-emitted", json.dumps(result))
+
+    def test_publish_source_fails_local_preflight_before_authentication(self) -> None:
+        source = self.work / "draft.md"
+        source.write_text("## Chart\n\n![Missing](missing.png)\n", encoding="utf-8")
+        with patch("platform.Settings.from_env") as settings_loader:
+            with self.assertRaisesRegex(RuntimeError, "missing registered"):
+                asyncio.run(publish_source(
+                    source,
+                    "Title",
+                    "Title",
+                    1,
+                    "Topic",
+                    self.work / "run",
+                    mode="polish",
+                    theme="emerald",
+                    browser_channel="chromium",
+                    strict=True,
+                ))
+        settings_loader.assert_not_called()
+
     def test_cli_publish_is_dry_run_by_default(self) -> None:
         html = self.work / "post.html"
         html.write_text("<h2>Safe</h2>", encoding="utf-8")
@@ -161,6 +281,48 @@ class SkillTests(unittest.TestCase):
         result = subprocess.run([sys.executable, "-c", code], text=True, capture_output=True, check=True)
         self.assertEqual(result.stdout.strip(), "False")
 
+    def test_pure_api_accepts_blocked_final_html_when_session_is_authenticated(self) -> None:
+        class FakeResponse:
+            def __init__(self, status: int, url: str, *, location: str = "", payload: dict | None = None):
+                self.status_code = status
+                self.url = url
+                self.headers = {"Location": location} if location else {}
+                self._payload = payload or {}
+
+            def json(self) -> dict:
+                return self._payload
+
+        class FakeSession:
+            def __init__(self) -> None:
+                self.headers: dict[str, str] = {}
+                self.redirects = [
+                    FakeResponse(302, "https://api.worldquantbrain.com/authentication/support", location="https://worldquantbrain.zendesk.com/access/jwt?token=redacted"),
+                    FakeResponse(302, "https://worldquantbrain.zendesk.com/access/jwt?token=redacted", location="https://support.worldquantbrain.com/hc/en-us/community/topics"),
+                    FakeResponse(403, "https://support.worldquantbrain.com/hc/en-us/community/topics"),
+                ]
+
+            def get(self, url: str, **kwargs: object) -> FakeResponse:
+                if url.endswith("/api/v2/help_center/sessions.json"):
+                    return FakeResponse(200, url, payload={"current_session": {"csrf_token": "csrf"}})
+                return self.redirects.pop(0)
+
+        settings = Settings(
+            email="user@example.com",
+            password="secret",
+            brain_api_url="https://api.worldquantbrain.com",
+            support_url="https://support.worldquantbrain.com",
+            locale="en-us",
+            artifact_dir=self.work,
+            chrome_channel="chromium",
+        )
+        fake = FakeSession()
+        with patch("pure_api.authenticate_brain", return_value=fake) as authenticate:
+            session, csrf = establish_support_session(settings)
+        authenticate.assert_called_once_with(settings, trust_env=False)
+        self.assertIs(session, fake)
+        self.assertEqual(csrf, "csrf")
+        self.assertEqual(fake.redirects, [])
+
     def test_hash_is_stable(self) -> None:
         self.assertEqual(sha256_text("same"), sha256_text("same"))
 
@@ -169,11 +331,33 @@ class SkillTests(unittest.TestCase):
         self.assertNotIn('<img src=x onerror="alert(1)">', rendered)
         self.assertIn("&lt;img", rendered)
 
+    def test_preview_writes_only_html_artifacts(self) -> None:
+        html = self.work / "post.html"
+        html.write_text("<h2>Body</h2>", encoding="utf-8")
+        result = asyncio.run(create_preview(html, self.work / "preview", "Title"))
+        self.assertEqual(set(result), {"rendered_html"})
+        self.assertTrue((self.work / "preview" / "rendered.html").is_file())
+        self.assertEqual(list((self.work / "preview").glob("*.png")), [])
+
+    def test_preview_module_does_not_import_playwright(self) -> None:
+        code = (
+            "import sys; "
+            f"sys.path.insert(0, {str(SCRIPTS)!r}); "
+            "import preview; "
+            "print('playwright' in sys.modules)"
+        )
+        result = subprocess.run([sys.executable, "-c", code], text=True, capture_output=True, check=True)
+        self.assertEqual(result.stdout.strip(), "False")
+
     def test_bundled_chromium_does_not_set_system_channel(self) -> None:
         bundled = browser_launch_kwargs("chromium")
         system = browser_launch_kwargs("chrome")
         self.assertNotIn("channel", bundled)
         self.assertEqual(system["channel"], "chrome")
+
+    def test_browser_headless_mode_is_explicit(self) -> None:
+        self.assertTrue(browser_launch_kwargs("chrome")["headless"])
+        self.assertFalse(browser_launch_kwargs("chrome", headless=False)["headless"])
 
     def test_auto_browser_uses_bundled_when_present(self) -> None:
         executable = self.work / "chromium"
@@ -185,7 +369,7 @@ class SkillTests(unittest.TestCase):
         self.assertEqual(launch["channel"], "chrome")
 
     def test_explicit_missing_bundled_browser_has_actionable_error(self) -> None:
-        with self.assertRaisesRegex(RuntimeError, "playwright install chromium"):
+        with self.assertRaisesRegex(RuntimeError, "install_browser.py"):
             browser_launch_kwargs("chromium", self.work / "missing-chromium")
 
     def test_acceptance_update_component_is_strict_clean(self) -> None:

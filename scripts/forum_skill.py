@@ -9,7 +9,7 @@ import sys
 from pathlib import Path
 
 from audit import audit_html
-from common import SKILL_ROOT, Settings, authenticate_brain, browser_launch_kwargs, write_json
+from common import SKILL_ROOT, Settings, authenticate_brain, browser_launch_kwargs, configure_playwright_environment, write_json
 from pure_api import pure_api_publish
 from render import compose
 
@@ -33,16 +33,30 @@ async def doctor(args: argparse.Namespace) -> dict[str, object]:
     checks["brain_api_url"] = settings.brain_api_url
     checks["support_url"] = settings.support_url
     checks["credentials_configured"] = bool(settings.email and settings.password)
-    if args.browser:
+    checks["playwright_browsers_path"] = str(settings.playwright_browsers_path)
+    configure_playwright_environment(settings)
+    if args.browser and args.auth:
+        from platform import ForumBrowser
+
+        async with ForumBrowser(settings) as client:
+            await client.csrf()
+        checks["browser"] = "ok"
+        checks["authentication"] = "ok"
+        checks["support_session"] = "ok"
+    elif args.browser:
         from playwright.async_api import async_playwright
 
         async with async_playwright() as playwright:
             browser = await playwright.chromium.launch(
-                **browser_launch_kwargs(settings.chrome_channel, playwright.chromium.executable_path)
+                **browser_launch_kwargs(
+                    settings.chrome_channel,
+                    playwright.chromium.executable_path,
+                    headless=settings.headless,
+                )
             )
             await browser.close()
         checks["browser"] = "ok"
-    if args.auth:
+    elif args.auth:
         session = authenticate_brain(settings)
         checks["authentication"] = "ok"
         session.close()
@@ -78,7 +92,6 @@ def parse_args() -> argparse.Namespace:
     command.add_argument("--html", type=Path, required=True)
     command.add_argument("--title", default="Forum preview")
     command.add_argument("--output-dir", type=Path, required=True)
-    command.add_argument("--no-screenshots", action="store_true")
 
     command = sub.add_parser("upload")
     command.add_argument("--manifest", type=Path, required=True)
@@ -111,6 +124,21 @@ def parse_args() -> argparse.Namespace:
     command.add_argument("--strict", action="store_true")
     command.add_argument("--execute", action="store_true")
 
+    command = sub.add_parser("publish-source")
+    command.add_argument("--input", type=Path, required=True)
+    command.add_argument("--title", required=True)
+    command.add_argument("--confirm-title", required=True)
+    command.add_argument("--topic-id", type=int, required=True)
+    command.add_argument("--topic-name")
+    command.add_argument("--output-dir", type=Path, required=True)
+    command.add_argument("--manifest", type=Path)
+    command.add_argument("--image-dir", type=Path)
+    command.add_argument("--mode", choices=["preserve", "polish", "develop"], default="polish")
+    command.add_argument("--theme", choices=["emerald", "indigo", "coral"], default="emerald")
+    command.add_argument("--browser-channel")
+    command.add_argument("--strict", action="store_true")
+    command.add_argument("--execute", action="store_true")
+
     command = sub.add_parser("verify")
     command.add_argument("--post-id", required=True)
     command.add_argument("--post-url", required=True)
@@ -128,7 +156,7 @@ def parse_args() -> argparse.Namespace:
     command.add_argument("--output-dir", type=Path, required=True)
     command.add_argument("--mode", choices=["preserve", "polish", "develop"], default="polish")
     command.add_argument("--theme", choices=["emerald", "indigo", "coral"], default="emerald")
-    command.add_argument("--browser-channel", default="chromium")
+    command.add_argument("--browser-channel")
     command.add_argument("--execute", action="store_true")
 
     command = sub.add_parser("pure-api-publish")
@@ -159,7 +187,7 @@ async def main_async(args: argparse.Namespace) -> int:
     if args.command == "preview":
         from preview import create_preview
 
-        emit(await create_preview(args.html, args.output_dir, args.title, screenshots=not args.no_screenshots))
+        emit(await create_preview(args.html, args.output_dir, args.title))
         return 0
     if args.command == "upload":
         from platform import upload_images
@@ -174,6 +202,26 @@ async def main_async(args: argparse.Namespace) -> int:
         if not args.execute:
             raise RuntimeError("dry-run protection: pass --execute to publish")
         emit(await publish_post(args.html, args.title, args.confirm_title, args.topic_id, args.topic_name, args.output_dir, strict=args.strict))
+        return 0
+    if args.command == "publish-source":
+        from platform import publish_source
+
+        if not args.execute:
+            raise RuntimeError("dry-run protection: pass --execute to publish")
+        emit(await publish_source(
+            args.input,
+            args.title,
+            args.confirm_title,
+            args.topic_id,
+            args.topic_name,
+            args.output_dir,
+            mode=args.mode,
+            theme=args.theme,
+            browser_channel=args.browser_channel,
+            strict=args.strict,
+            manifest_path=args.manifest,
+            image_dir=args.image_dir,
+        ))
         return 0
     if args.command in {"update", "probe"}:
         from platform import update_post

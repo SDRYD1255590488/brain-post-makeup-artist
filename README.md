@@ -2,193 +2,312 @@
 
 中文 | [English](#english)
 
-## 让论坛帖子更好读，也更放心地发布
+把想法、笔记、Markdown、HTML 或研究材料，整理成结构清晰、样式稳定并可安全发布到 WorldQuant BRAIN Support 论坛的帖子。
 
-`brain-post-makeup-artist` 帮你把一个想法、笔记、研究材料或现有草稿，变成适合 WorldQuant BRAIN Support 论坛阅读的帖子：先讲清结论，再组织证据；让结构、重点和细节都容易找到。
+`brain-post-makeup-artist` 是一个面向 Agent 的可执行 Skill。它不只是给正文换颜色：Agent 会先理解读者和目标，再组织摘要、章节和阅读路径，选用经过平台验证的组件，完成兼容性审计，并在用户确认后通过受保护的流程发布或更新。
 
-它不只是换颜色或套模板。Skill 会根据读者和发帖目标组织标题、摘要、章节与阅读路径，再使用经过平台验证的组件完成排版，并在发布前审计、预览和回读。
+## 它解决什么问题
 
-### 你会得到什么
+论坛富文本编辑器会重写粘贴内容，很多在本地看起来正常的 HTML、CSS、锚点和图片地址发布后会被移除或降级。本项目把已经验证过的排版知识和发布流程固化为可复用工具：
 
-- 清晰的帖子结构：摘要、章节、目录和返回顶部链接
-- 易读的视觉组件：提示框、表格、指标面板、时间线、图片、公式和折叠详情
-- 支持从纯文本、Markdown、HTML 或既有帖子开始
-- 桌面、平板和手机预览
-- 发布前的兼容性与敏感信息检查
-- 图片注册、发布后回读和结构核对
-- 对创建、更新和不确定结果的保护，避免误发或重复发帖
+- 从一句需求、散乱材料或已有草稿生成完整帖子结构
+- 提供提示框、表格、指标面板、时间线、折叠详情、公式和图片组件
+- 自动生成目录与命名锚点，正文从 `h2` 开始，避免平台标题重复
+- 在发布前检查不兼容标签、样式、外链图片、占位符和敏感信息
+- 纯文本或永久图片正文优先使用纯 HTTP API，不启动浏览器
+- 本地图片通过 Zendesk User Images 注册为永久 `/hc/user_images/...` 地址
+- 创建、更新和回读都有精确目标确认、重复保护和未知结果保护
 
-所有样式均以 BRAIN Support 论坛的实际回读结果为依据。
+样式能力来自真实 BRAIN Support 回读，不是假设所有浏览器 HTML 都能被平台保留。
 
-### 如何使用
+## 适用范围
 
-在你使用的 Agent 中安装或提供本目录为 Skill 后，直接描述你要发什么：
+本项目专门支持 **WorldQuant BRAIN Support 论坛**。论坛底层使用 Zendesk Community，但认证、SSO 和图片会话与 WorldQuant 环境绑定，因此它不是无需改造即可用于任意 Zendesk 租户的通用发布器。
 
-```text
-我要在 BRAIN 论坛写一篇给新手看的帖子，解释 XXX。
+它可以被任何能够完成以下操作的 Agent 使用：
 
-材料：……
-读者看完应该能够：……
-```
+- 读取 `SKILL.md`
+- 运行本地命令
+- 读写工作文件
+- 在真实发布前向用户确认标题、版块和操作
 
-如果已有草稿，也可以直接说：
+不同 Agent 产品的 Skill 安装方式可能不同；仓库内的执行接口和安全约束保持一致。
 
-```text
-保留原意，把这篇 Markdown 排版成清晰、专业的 BRAIN 论坛帖子；先预览，未经我确认不要发布。
-```
+## 五分钟开始
 
-Skill 会在真实发布前确认标题、目标版块和最终正文。它适用于能够读取 `SKILL.md`、运行本地命令、读写文件并向用户请求确认的 Agent；不同 Agent 产品只是在安装或加载 Skill 的方式上不同。
+### 1. 安装
 
-### 安装与首次检查
-
-克隆仓库后，在仓库目录运行：
+需要 Python 3.11+ 和 [uv](https://docs.astral.sh/uv/)。
 
 ```bash
+git clone https://github.com/SDRYD1255590488/brain-post-makeup-artist.git
+cd brain-post-makeup-artist
 uv sync
-uv run playwright install chromium
 ```
 
-然后创建本地 `.env`。如果机器已有 `brain-mcp-v2` 的本地配置，可安全导入：
+如果只发布无新本地图片的帖子，到这里不需要安装浏览器。
+
+### 2. 配置账号
+
+如果当前机器已有 `brain-mcp-v2` 配置：
 
 ```bash
 uv run python scripts/configure_env.py
 ```
 
-否则根据 `.env.example` 创建 `.env`，填写自己的 BRAIN 账号信息。`.env` 不会被提交。
+脚本只把凭据写入本地、被 Git 忽略的 `.env`，权限为 `0600`，不会输出密码。
 
-最后检查认证与浏览器：
+其他环境请复制 `.env.example` 为 `.env`，填写自己的 BRAIN 账号：
+
+```dotenv
+BRAIN_EMAIL=you@example.com
+BRAIN_PASSWORD=your-password
+```
+
+不要把 Cookie、CSRF Token、JWT 或浏览器请求复制到配置文件。
+
+### 3. 检查环境
+
+文本发布只需检查 BRAIN 认证：
 
 ```bash
+uv run python scripts/forum_skill.py doctor --auth
+```
+
+本地图片注册或浏览器型更新才需要安装并检查浏览器：
+
+```bash
+uv run python scripts/install_browser.py
 uv run python scripts/forum_skill.py doctor --auth --browser
 ```
 
-需要手动运行流程时，可从“撰写 → 审计 → 预览”开始：
+### 4. 交给 Agent
+
+把本仓库作为 Skill 提供给 Agent，然后直接描述目标。例如：
+
+```text
+使用 $brain-post-makeup-artist 写一篇面向 BRAIN 新用户的论坛帖子。
+主题是 XXX，材料如下：……
+先整理结构并生成本地预览，未经我确认不要发布。
+```
+
+已有草稿时：
+
+```text
+使用 $brain-post-makeup-artist 保留原意，把这份 Markdown 排版成专业的 BRAIN 论坛帖子。
+默认使用 polish 模式，发布前告诉我准确标题、目标版块和审计结果。
+```
+
+Agent 的完整配置与执行说明见 [Agent 操作手册](references/agent-guide.md)。
+
+## 发布路径怎么选
+
+| 任务 | 推荐路径 | 浏览器 |
+|---|---|---|
+| 只生成草稿、审计、HTML 预览 | `compose` → `audit` → `preview` | 不需要 |
+| 创建纯文本/HTML 帖子，没有新本地图片 | `pure-api-publish` | 不需要 |
+| 创建帖子并注册本地图片 | `publish-source` | 需要 |
+| 更新已有帖子 | 两阶段 `update` | 需要 |
+| 给已有帖子新增本地图片 | `upload` → 重新 `compose` → 两阶段 `update` | 需要 |
+
+本地 HTML 预览不会启动 Playwright。浏览器只用于当前平台确实要求浏览器会话的图片注册和已有帖子更新。
+
+## 手动生成草稿
 
 ```bash
 uv run python scripts/forum_skill.py compose \
-  --input draft.md --title "帖子标题" --theme emerald \
+  --input draft.md \
+  --title "准确的帖子标题" \
+  --mode polish \
+  --theme emerald \
   --output-dir .forum-runs/my-post
 
 uv run python scripts/forum_skill.py audit \
-  --html .forum-runs/my-post/post.html --strict
+  --html .forum-runs/my-post/post.html \
+  --title "准确的帖子标题" \
+  --strict
 
 uv run python scripts/forum_skill.py preview \
   --html .forum-runs/my-post/post.html \
+  --title "准确的帖子标题" \
   --output-dir .forum-runs/my-post/preview
 ```
 
-详细的发布和更新约束见 [SKILL.md](SKILL.md)。
+`preview` 生成可直接打开的 `rendered.html`。真实发布仍必须由用户确认。
 
-### 安全发布
+## 安全模型
 
-- 不会自动进行真实发布；每次创建或更新都需要明确确认。
-- 图片只使用已注册的 BRAIN User Image，不使用外链或临时上传地址。
-- 密码、Cookie、Token、CSRF 和本地运行证据不会提交到仓库。
-- 如果一次写入的结果不明确，流程会停止，等待核对平台状态，而不会盲目重试。
+- 每次真实创建或更新都需要 `--execute` 和准确的确认值。
+- 发布前重新解析目标 Topic；更新前同时绑定 Post ID、URL 和当前正文 SHA-256。
+- 创建成功标记防止同一运行目录重复创建。
+- 如果 POST/PUT 已派发但结果不确定，写入 `operation_unknown.json` 并停止；不能盲目重试。
+- 只允许永久 `/hc/user_images/...` 图片地址进入最终正文。
+- 保存的响应和元数据会脱敏；不保存 Cookie、CSRF、JWT、密码或签名上传地址。
+- `.env`、`.forum-runs/`、浏览器缓存和本地生成资产均被 Git 忽略。
 
-### 环境要求
+## 依赖与可复现性
 
-- Python 3.11+
-- [uv](https://docs.astral.sh/uv/)
-- 与锁定 Playwright 版本匹配的 Chromium（执行上面的安装命令）
-- 可访问 BRAIN Support 的有效 BRAIN 账号
+- Python：3.11+
+- 依赖声明：[pyproject.toml](pyproject.toml)
+- 标准锁文件：[uv.lock](uv.lock)
+- pip 入口：[requirements.txt](requirements.txt)
+- pip 解析版本：[requirements.lock.txt](requirements.lock.txt)
+- Playwright 浏览器：仅图片或浏览器型更新需要，由 `scripts/install_browser.py` 安装到仓库隔离缓存
 
-核心依赖已锁定在 `uv.lock`；也提供 `requirements.txt` 给 pip 用户。详细的组件兼容性和平台工作流位于 `references/`。
+`uv.lock` 是 Python 依赖的权威锁文件。不要提交 `.venv/` 或 `.playwright-browsers/`。
+
+当前锁定的核心包：
+
+| 包 | 版本 | 用途 |
+|---|---:|---|
+| `beautifulsoup4` | 4.15.0 | HTML 规范化、组件处理与回读分析 |
+| `mistune` | 3.3.4 | Markdown 转换 |
+| `requests` | 2.34.2 | BRAIN 认证与纯 HTTP 发布 |
+| `playwright` | 1.62.0 | 图片编辑器会话与浏览器型更新 |
+
+## 文档导航
+
+- [SKILL.md](SKILL.md)：Agent 触发条件、核心流程和安全不变量
+- [Agent 操作手册](references/agent-guide.md)：配置、命令选择、输入输出和排障
+- [平台架构](references/platform-architecture.md)：BRAIN、Support SSO、Zendesk、CSRF 与 User Images 的关系
+- [平台操作流程](references/platform-workflow.md)：认证、创建、更新、图片和回读检查表
+- [HTML 兼容性](references/compatibility.md)：稳定组件与平台边界
+- [能力清单](references/capabilities.json)：机器可读的标签、属性和样式支持范围
+- [验收标准](references/acceptance.md)：发布前质量门槛
 
 ## English
 
-## Make forum posts easier to read—and safer to publish
+Turn ideas, notes, Markdown, HTML, or research material into structured, platform-compatible posts that can be safely published to the WorldQuant BRAIN Support forum.
 
-`brain-post-makeup-artist` turns an idea, notes, research material, or an existing draft into a WorldQuant BRAIN Support forum post that is easy to follow: lead with the conclusion, organise the evidence, and make key details easy to find.
+`brain-post-makeup-artist` is an executable Skill for coding agents. It does more than apply colours: the agent identifies the audience and goal, shapes the summary and reading flow, selects platform-tested components, audits compatibility, and uses guarded create or update workflows only after user confirmation.
 
-It is more than a colour theme or a template. The Skill helps an agent shape the title, summary, sections, and reading flow for the intended audience, then uses platform-tested components and verifies the result before and after publishing.
+## What it solves
 
-### What you get
+Rich-text editors rewrite pasted content. HTML, CSS, anchors, and image URLs that look correct locally may be stripped or degraded after publication. This project packages verified BRAIN Support behaviour into a repeatable workflow:
 
-- Clear post structure: summary, sections, navigation, and back-to-top links
-- Readable visual components: callouts, tables, KPI panels, timelines, images, formulas, and foldouts
-- Start from plain text, Markdown, HTML, or an existing post
-- Desktop, tablet, and mobile previews
-- Compatibility and sensitive-content checks before publication
-- Image registration, post readback, and structural verification
-- Guards against accidental, duplicate, or uncertain live writes
+- Build a complete post from a short request, rough notes, or an existing draft
+- Use callouts, tables, KPI panels, timelines, foldouts, formulas, and figures
+- Generate navigation with named anchors and keep the platform title outside the body
+- Detect unsupported markup, external images, placeholders, and sensitive information
+- Publish text or permanent-image HTML through a browserless HTTP path
+- Register local images as permanent Zendesk User Images when needed
+- Guard creates and updates with exact confirmation, duplicate prevention, and unknown-outcome markers
 
-All styles are based on real BRAIN Support forum readbacks.
+The compatibility model is based on real BRAIN Support readback evidence, not generic browser HTML support.
 
-### Use it with your agent
+## Scope
 
-Install or provide this directory as a Skill to your agent, then describe the post you want:
+This repository targets the **WorldQuant BRAIN Support forum**. The forum runs on Zendesk Community, but its authentication, SSO, and image-session behaviour are WorldQuant-specific. The project is not a drop-in publisher for arbitrary Zendesk tenants.
 
-```text
-I want to write a beginner-friendly BRAIN forum post explaining XXX.
+It works with agents that can read `SKILL.md`, execute local commands, read and write work files, and request confirmation before a live write. Installation or discovery differs by agent product; the repository interface remains the same.
 
-Source material: …
-After reading, readers should be able to: …
-```
+## Five-minute setup
 
-For an existing draft, ask for a controlled rewrite:
+### 1. Install
 
-```text
-Keep the meaning, turn this Markdown into a clear and professional BRAIN forum post, preview it first, and do not publish without my confirmation.
-```
-
-The Skill confirms the title, destination topic, and final body before any live write. It works with agents that can read `SKILL.md`, run local commands, read and write files, and request user confirmation. Skill installation/loading differs by agent product.
-
-### Install and first check
-
-After cloning the repository, run this inside it:
+Python 3.11+ and [uv](https://docs.astral.sh/uv/) are required.
 
 ```bash
+git clone https://github.com/SDRYD1255590488/brain-post-makeup-artist.git
+cd brain-post-makeup-artist
 uv sync
-uv run playwright install chromium
 ```
 
-Create a local `.env` next. If the machine already has a local `brain-mcp-v2` configuration, import it safely:
+A browser is not required for posts that do not register new local images.
+
+### 2. Configure credentials
+
+If the machine already has a local `brain-mcp-v2` configuration:
 
 ```bash
 uv run python scripts/configure_env.py
 ```
 
-Otherwise create `.env` from `.env.example` and fill in the user's own BRAIN account details. `.env` is never committed.
+The script writes credentials only to the ignored local `.env`, enforces mode `0600`, and never prints the password.
 
-Then check authentication and the browser:
+Otherwise copy `.env.example` to `.env` and add the user's own BRAIN credentials. Never paste cookies, CSRF tokens, JWTs, or copied browser requests into configuration.
+
+### 3. Check readiness
+
+For text publishing:
 
 ```bash
+uv run python scripts/forum_skill.py doctor --auth
+```
+
+Install and check the browser only for local images or browser-backed updates:
+
+```bash
+uv run python scripts/install_browser.py
 uv run python scripts/forum_skill.py doctor --auth --browser
 ```
 
-For a manual workflow, begin with compose, audit, and preview:
+### 4. Ask an agent
 
-```bash
-uv run python scripts/forum_skill.py compose \
-  --input draft.md --title "Post title" --theme emerald \
-  --output-dir .forum-runs/my-post
-
-uv run python scripts/forum_skill.py audit \
-  --html .forum-runs/my-post/post.html --strict
-
-uv run python scripts/forum_skill.py preview \
-  --html .forum-runs/my-post/post.html \
-  --output-dir .forum-runs/my-post/preview
+```text
+Use $brain-post-makeup-artist to write a beginner-friendly BRAIN forum post about XXX.
+Here is my source material: …
+Prepare and preview it locally, but do not publish without my confirmation.
 ```
 
-See [SKILL.md](SKILL.md) for the guarded publishing and update workflow.
+For an existing draft:
 
-### Publish safely
+```text
+Use $brain-post-makeup-artist to preserve the meaning and turn this Markdown into a professional BRAIN forum post.
+Use polish mode and show me the exact title, topic, and audit result before publishing.
+```
 
-- Live publishing is never automatic; every create or update needs explicit confirmation.
-- Images must be registered BRAIN User Images—not external or temporary upload URLs.
-- Passwords, cookies, tokens, CSRF values, and local run evidence are never committed.
-- If the result of a write is uncertain, the workflow stops for a platform check instead of retrying blindly.
+See the [Agent operator guide](references/agent-guide.md) for the complete configuration, command, artifact, and troubleshooting contract.
 
-### Requirements
+## Choose the right path
+
+| Task | Recommended path | Browser |
+|---|---|---|
+| Draft, audit, and local HTML preview | `compose` → `audit` → `preview` | No |
+| Create text/HTML without a new local image | `pure-api-publish` | No |
+| Create a post and register local images | `publish-source` | Yes |
+| Update an existing post | two-pass `update` | Yes |
+| Add a local image to an existing post | `upload` → re-compose → two-pass `update` | Yes |
+
+The local HTML preview does not launch Playwright. Browser automation is reserved for platform operations that currently require an editor-backed session.
+
+## Safety model
+
+- Every live create or update requires `--execute` and exact confirmation values.
+- Topics are resolved immediately before create; updates bind Post ID, URL, and current-source SHA-256.
+- A success marker prevents duplicate creates in the same run directory.
+- If a dispatched POST/PUT has no conclusive result, `operation_unknown.json` blocks further writes until platform state is checked.
+- Final images must use permanent `/hc/user_images/...` paths.
+- Saved responses are sanitized; cookies, CSRF values, JWTs, passwords, and signed upload URLs are not retained.
+- `.env`, `.forum-runs/`, browser caches, and generated local assets are ignored by Git.
+
+## Dependencies and reproducibility
 
 - Python 3.11+
-- [uv](https://docs.astral.sh/uv/)
-- Chromium matched to the locked Playwright version (install it with the command above)
-- A valid BRAIN account with access to BRAIN Support
+- Dependency declaration: [pyproject.toml](pyproject.toml)
+- Canonical lock: [uv.lock](uv.lock)
+- pip entry point: [requirements.txt](requirements.txt)
+- pip resolved versions: [requirements.lock.txt](requirements.lock.txt)
+- Playwright browser: required only for image registration or browser-backed updates and installed by `scripts/install_browser.py`
 
-Core dependencies are locked in `uv.lock`; `requirements.txt` is also available for pip users. Component compatibility and platform workflow details live in `references/`.
+Locked core packages:
+
+| Package | Version | Purpose |
+|---|---:|---|
+| `beautifulsoup4` | 4.15.0 | HTML normalization, component handling, and readback analysis |
+| `mistune` | 3.3.4 | Markdown conversion |
+| `requests` | 2.34.2 | BRAIN authentication and browserless HTTP publishing |
+| `playwright` | 1.62.0 | Image-editor sessions and browser-backed updates |
+
+## Documentation
+
+- [SKILL.md](SKILL.md): triggering, core workflow, and safety invariants
+- [Agent operator guide](references/agent-guide.md): setup, route selection, command contracts, artifacts, and troubleshooting
+- [Platform architecture](references/platform-architecture.md): BRAIN authentication, Support SSO, Zendesk, CSRF, and User Images
+- [Platform workflow](references/platform-workflow.md): operational checklists
+- [HTML compatibility](references/compatibility.md): stable components and sanitizer boundaries
+- [Capabilities](references/capabilities.json): machine-readable support matrix
+- [Acceptance](references/acceptance.md): release-quality gates
 
 ## License
 

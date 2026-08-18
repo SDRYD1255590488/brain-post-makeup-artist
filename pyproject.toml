@@ -1,7 +1,7 @@
 [project]
 name = "brain-post-makeup-artist"
 version = "0.1.0"
-description = "Codex Skill for deterministic BRAIN forum composition and guarded publishing"
+description = "Agent Skill for deterministic BRAIN forum composition and guarded publishing"
 requires-python = ">=3.11"
 dependencies = [
   "beautifulsoup4>=4.12",

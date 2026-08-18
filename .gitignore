@@ -1,5 +1,6 @@
 .env
 .venv/
+.playwright-browsers/
 .forum-runs/
 __pycache__/
 *.py[cod]
