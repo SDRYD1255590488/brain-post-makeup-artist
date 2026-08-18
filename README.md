@@ -70,6 +70,26 @@ uv run python scripts/forum_skill.py preview \
 - 不使用 `<script>`、`<style>`、外部图片、MathML 或未经验证的 CSS Grid。
 - 本项目不保证所有论坛标签永久兼容；平台升级后应重新执行探针和回读审计。
 
+### 依赖与版本
+
+`pyproject.toml` 保存可接受的直接依赖范围，`uv.lock` 保存本项目当前验证过的精确解析版本。建议使用 `uv sync`，不要手动混装依赖。
+
+| 依赖 | 声明范围 | 当前锁定版本 | 用途 |
+| --- | --- | --- | --- |
+| Python | `>=3.11` | 本机验证 `3.12.13` | 运行 Skill 脚本 |
+| beautifulsoup4 | `>=4.12` | `4.15.0` | HTML 解析与结构统计 |
+| mistune | `>=3.0` | `3.3.4` | Markdown 转换 |
+| playwright | `>=1.50` | `1.62.0` | Support SSO、User Image 注册、页面回读 |
+| requests | `>=2.32` | `2.34.2` | BRAIN API 认证与 HTTP 辅助请求 |
+
+Playwright Python 包和浏览器二进制是两件事。若希望使用匹配版本的 bundled Chromium，可执行：
+
+```bash
+uv run playwright install chromium
+```
+
+如果该浏览器二进制尚未安装，默认 `BRAIN_FORUM_CHROME_CHANNEL=auto` 会在启动前选择已安装的系统 Chrome；不会先启动失败再自动重试。
+
 ## English
 
 `brain-post-makeup-artist` is a formatting, auditing, publishing, and readback Skill for WorldQuant BRAIN / Zendesk Community forums.
@@ -119,6 +139,26 @@ Compose, audit, and preview a draft with the commands shown in the Chinese secti
 - Account credentials are never written to posts, README files, or logs.
 - The Skill avoids scripts, `<style>`, external images, MathML, and unverified CSS Grid.
 - Forum compatibility is empirical and can change after platform updates; rerun probes and readback audits after major changes.
+
+### Dependencies and versions
+
+`pyproject.toml` declares acceptable direct-dependency ranges, while `uv.lock` records the exact versions resolved and validated for this repository. Use `uv sync` instead of mixing manually installed packages.
+
+| Dependency | Declared range | Locked version | Purpose |
+| --- | --- | --- | --- |
+| Python | `>=3.11` | Verified locally with `3.12.13` | Run the Skill scripts |
+| beautifulsoup4 | `>=4.12` | `4.15.0` | Parse HTML and count structures |
+| mistune | `>=3.0` | `3.3.4` | Convert Markdown |
+| playwright | `>=1.50` | `1.62.0` | Support SSO, User Image registration, and page readback |
+| requests | `>=2.32` | `2.34.2` | BRAIN API authentication and HTTP helpers |
+
+The Playwright Python package and its browser binary are separate dependencies. To install the version-matched bundled Chromium, run:
+
+```bash
+uv run playwright install chromium
+```
+
+When the bundled browser is not installed, the default `BRAIN_FORUM_CHROME_CHANNEL=auto` selects an installed system Chrome before launch; it does not launch once, fail, and then retry automatically.
 
 ## Repository layout
 
