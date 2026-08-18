@@ -1,0 +1,38 @@
+{
+  "emerald": {
+    "title": "#123D37",
+    "heading": "#0F6B5F",
+    "subheading": "#241D18",
+    "emphasis": "#176B49",
+    "muted": "#5F554B",
+    "surface": "#E8F5E9",
+    "surface_alt": "#F4F8F6",
+    "border": "#C9D8D3",
+    "warning": "#B45309",
+    "warning_surface": "#FFF7ED"
+  },
+  "indigo": {
+    "title": "#312E81",
+    "heading": "#4338CA",
+    "subheading": "#1E1B4B",
+    "emphasis": "#3730A3",
+    "muted": "#57534E",
+    "surface": "#EEF2FF",
+    "surface_alt": "#F8FAFC",
+    "border": "#C7D2FE",
+    "warning": "#C2410C",
+    "warning_surface": "#FFF7ED"
+  },
+  "coral": {
+    "title": "#7C2D12",
+    "heading": "#C2410C",
+    "subheading": "#431407",
+    "emphasis": "#9A3412",
+    "muted": "#57534E",
+    "surface": "#FFF7ED",
+    "surface_alt": "#FFFBEB",
+    "border": "#FED7AA",
+    "warning": "#B91C1C",
+    "warning_surface": "#FFF1F2"
+  }
+}

@@ -1,0 +1,4 @@
+interface:
+  display_name: "BRAIN Post Makeup Artist"
+  short_description: "美化、审计并安全发布高可读性的 BRAIN 论坛帖子"
+  default_prompt: "Use $brain-post-makeup-artist to turn my draft into a polished BRAIN forum post and prepare it for safe publication."

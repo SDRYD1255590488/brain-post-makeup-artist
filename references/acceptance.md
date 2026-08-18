@@ -1,0 +1,27 @@
+# Acceptance
+
+## Local gates
+
+- `quick_validate.py` passes.
+- Unit and CLI integration tests pass without network access.
+- Strict audit reports zero errors and zero warnings for the representative long post.
+- Desktop, tablet, and mobile screenshots show no clipped text, broken tables, title duplication, or low-contrast labels.
+- Repository secret scan finds no credentials, cookies, JWTs, CSRF values, signed upload URLs, personal topic IDs, or personal post IDs.
+- Re-running composition with the same source and options produces byte-identical HTML and post-spec content apart from output paths.
+
+## Live acceptance
+
+Run only after explicit user confirmation:
+
+1. Resolve the configured `[AI_ONLY]` topic by ID and exact name.
+2. Register one local PNG and confirm the result starts with `/hc/user_images/`.
+3. Create one retained post whose title starts with `[SKILL ACCEPTANCE]` and whose body contains every stable component family.
+4. Verify the saved source, rendered DOM, counts, navigation, MathJax, image, and desktop screenshot.
+5. Update the same post exactly once with an additional verified callout; verify again.
+6. Attempting the same create command again must be blocked by the local success marker.
+
+Execute these steps through the single `acceptance` CLI command so they share one browser process and one authenticated context. Use `--browser-channel auto`: select version-matched bundled Chromium when its executable exists, otherwise select system Chrome before launch. Do not probe by launching one browser and then retrying with another. Do not assemble the live acceptance from separate browser-launching commands.
+
+A pre-navigation `SIGABRT` inside a restricted sandbox is an execution-permission failure. Obtain browser execution permission and make one new pre-dispatch launch. A missing bundled executable is a dependency/configuration failure; either install the matching Playwright browser or explicitly use an installed system Chrome.
+
+Do not create multiple acceptance posts. If a write result is uncertain, stop and inspect platform state.

@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "platform": "WorldQuant BRAIN Support / Zendesk Community",
+  "verified_on": "2026-07-25",
+  "submission_path": "direct-source-browser-api",
+  "tags": {
+    "supported": ["a", "abbr", "address", "aside", "blockquote", "br", "caption", "cite", "code", "col", "colgroup", "dd", "del", "details", "div", "dl", "dt", "em", "figcaption", "figure", "h2", "h3", "h4", "h5", "h6", "hr", "img", "ins", "kbd", "li", "mark", "ol", "p", "pre", "q", "rt", "ruby", "s", "section", "small", "span", "strong", "sub", "summary", "sup", "table", "tbody", "td", "th", "thead", "time", "tr", "u", "ul", "var"],
+    "conditional": ["h1"],
+    "rejected": ["font", "iframe", "math", "meter", "progress", "script", "style", "svg"]
+  },
+  "style_properties": {
+    "supported": ["background", "background-color", "border", "border-bottom", "border-collapse", "border-left", "border-radius", "border-right", "border-top", "box-sizing", "color", "display", "font-family", "font-size", "font-style", "font-variant", "font-weight", "height", "letter-spacing", "line-height", "list-style-type", "max-width", "min-height", "min-width", "outline", "overflow-wrap", "padding", "padding-left", "padding-right", "text-align", "text-decoration", "text-decoration-color", "text-decoration-style", "text-indent", "text-overflow", "text-transform", "vertical-align", "white-space", "width", "word-spacing"],
+    "conditional": ["flex-wrap", "justify-content"],
+    "rejected": ["box-shadow", "column-count", "gap", "grid-template-columns", "margin", "margin-bottom", "margin-left", "margin-right", "margin-top", "opacity", "overflow-x", "scroll-behavior", "table-layout", "word-break"]
+  },
+  "attributes": {
+    "supported": ["alt", "colspan", "height", "href", "name", "rowspan", "src", "style", "title", "width"],
+    "rejected": ["class", "id", "onclick", "onerror", "onload"]
+  },
+  "images": {
+    "required_prefix": "/hc/user_images/",
+    "rejected_prefixes": ["http://", "https://", "data:", "/attachments/", "attachments/token/"]
+  },
+  "navigation": {"target": "a[name]", "link": "a[href^='#']"},
+  "formula": {"supported": ["mathjax-inline", "mathjax-display", "html-sub-sup"], "rejected": ["mathml", "inline-svg"]}
+}

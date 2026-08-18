@@ -1,0 +1,9 @@
+.env
+.venv/
+.forum-runs/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.DS_Store
+playwright-report/
+test-results/

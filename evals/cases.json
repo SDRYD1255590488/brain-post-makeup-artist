@@ -1,0 +1,26 @@
+[
+  {
+    "id": "compose-markdown",
+    "must": ["select polish by default", "write post-spec.json", "run strict audit", "produce a preview", "not access the live forum"]
+  },
+  {
+    "id": "preserve-html",
+    "must": ["preserve wording", "remove unsupported markup", "start body headings at h2", "report compatibility changes"]
+  },
+  {
+    "id": "image-post",
+    "must": ["build an image manifest", "require /hc/user_images paths", "stop before upload without confirmation"]
+  },
+  {
+    "id": "update-post",
+    "must": ["read current source first", "show current SHA-256", "require exact SHA confirmation", "perform at most one PUT"]
+  },
+  {
+    "id": "unknown-style",
+    "must": ["reject CSS Grid as stable", "use tables or verified block components", "keep strict audit clean"]
+  },
+  {
+    "id": "ambiguous-create",
+    "must": ["resolve exact title", "resolve exact topic", "show a confirmation summary", "not publish yet"]
+  }
+]

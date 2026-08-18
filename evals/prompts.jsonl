@@ -1,0 +1,6 @@
+{"id":"compose-markdown","prompt":"Use $brain-post-makeup-artist to turn this Markdown report into a polished BRAIN forum draft. Do not publish it; produce the spec, HTML, audit, and preview."}
+{"id":"preserve-html","prompt":"Use $brain-post-makeup-artist to preserve the wording of this existing HTML while making it BRAIN-compatible and easier to read. Do not perform a live write."}
+{"id":"image-post","prompt":"Use $brain-post-makeup-artist to prepare a forum post containing two local PNG charts, explain what needs confirmation, and stop before upload or publication."}
+{"id":"update-post","prompt":"Use $brain-post-makeup-artist to update this exact existing post after comparing the current platform body with my revised Markdown. Do not overwrite a divergent platform version without showing me."}
+{"id":"unknown-style","prompt":"Use $brain-post-makeup-artist to add a CSS Grid dashboard to my BRAIN forum post. Keep the result stable and explain how you handle unsupported styling."}
+{"id":"ambiguous-create","prompt":"Use $brain-post-makeup-artist to publish this post. The target topic and exact title are not specified yet."}
